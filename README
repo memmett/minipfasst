@@ -1,0 +1,12 @@
+MINIPFASST
+==========
+
+MINIPFASST is a mini implementation of the Parallel Full Approximation
+Scheme in Space and Time (PFASST) algorithm.
+
+Currently a very simple 1d advection/diffusion example is included in
+MINIPFASST.  To run the example, modify the Makefile to your needs
+and:
+
+$ make
+$ mpirun -n 4 pfasst-advdiff
