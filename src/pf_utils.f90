@@ -1,59 +1,44 @@
 !
-! Copyright (c) 2012, Matthew Emmett and Michael Minion.
+! Copyright (C) 2012, 2013 Matthew Emmett and Michael Minion.
 !
-! Redistribution and use in source and binary forms, with or without
-! modification, are permitted provided that the following conditions are
-! met:
-! 
-!   1. Redistributions of source code must retain the above copyright
-!      notice, this list of conditions and the following disclaimer.
-! 
-!   2. Redistributions in binary form must reproduce the above copyright
-!      notice, this list of conditions and the following disclaimer in
-!      the documentation and/or other materials provided with the
-!      distribution.
-! 
-! THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
-! "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
-! LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
-! A PARTICULAR PURPOSE ARE DISCLAIMED.  IN NO EVENT SHALL THE COPYRIGHT
-! HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
-! SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
-! LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
-! DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
-! THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-! (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
-! OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-! 
+! This file is part of LIBPFASST.
+!
+! LIBPFASST is free software: you can redistribute it and/or modify it
+! under the terms of the GNU General Public License as published by
+! the Free Software Foundation, either version 3 of the License, or
+! (at your option) any later version.
+!
+! LIBPFASST is distributed in the hope that it will be useful, but
+! WITHOUT ANY WARRANTY; without even the implied warranty of
+! MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+! General Public License for more details.
+!
+! You should have received a copy of the GNU General Public License
+! along with LIBPFASST.  If not, see <http://www.gnu.org/licenses/>.
+!
 
 module pf_mod_utils
   use pf_mod_dtype
   implicit none
 contains
 
-  ! Build the time interpolation matrix
-  subroutine pf_time_interpolation_matrix(nodesF, nnodesF, nodesG, nnodesG, &
-       tmat)
-    implicit none
-    integer,          intent(in)  :: nnodesF, nnodesG
-    double precision, intent(in)  :: nodesF(0:nnodesF-1), nodesG(0:nnodesG-1)
-    double precision, intent(out) :: tmat(0:nnodesG-1,0:nnodesF-nnodesG-1)
+  !
+  ! Build time interpolation matrix.
+  !
+  subroutine pf_time_interpolation_matrix(nodesF, nnodesF, nodesG, nnodesG, tmat)
+    integer,    intent(in)  :: nnodesF, nnodesG
+    real(pfdp), intent(in)  :: nodesF(0:nnodesF-1), nodesG(0:nnodesG-1)
+    real(pfdp), intent(out) :: tmat(0:nnodesF-1,0:nnodesG-1)
 
-    integer :: i, j, k
-    double precision :: xi, num, den
+    integer    :: i, j, k
+    real(pfdp) :: xi, num, den
 
-    if ((nnodesF-1)/(nnodesG-1) .ne. 2) then
-       stop 'time ratio must be 2 when building time interpolation matrix'
-    end if
-
-    do i = 0, nnodesF-nnodesG-1
-
-       xi = nodesF(i*2+1)
+    do i = 0, nnodesF-1
+       xi = nodesF(i)
 
        do j = 0, nnodesG-1
-
-          den = 1.0d0
-          num = 1.0d0
+          den = 1.0_pfdp
+          num = 1.0_pfdp
 
           do k = 0, nnodesG-1
              if (k == j) cycle
@@ -61,47 +46,77 @@ contains
              num = num * (xi        - nodesG(k))
           end do
 
-          ! store in transpose order
-          tmat(j, i) = num/den
-
+          tmat(i, j) = num/den
        end do
-
     end do
-
   end subroutine pf_time_interpolation_matrix
 
-  ! Spread initial condition
-  subroutine spreadq0(F, t0)
-    !use feval, only: eval_f1, eval_f2
-    use pf_mod_sweep
-    type(pf_level_t), intent(inout) :: F
-    double precision, intent(in)    :: t0
+
+  !
+  ! Spread initial condition.
+  !
+  subroutine spreadq0(lev, t0)
+    use sweeper, only: evaluate
+
+    type(pf_level), intent(inout) :: lev
+    real(pfdp),     intent(in   ) :: t0
 
     integer :: m, p
 
-    F%qSDC(:, 1) = F%q0
-    call sdceval(t0, 1, F)
+    lev%q(:,1) = lev%q0
+    call evaluate(lev, t0, 1)
 
-    do m = 2, F%nnodes
-       f%qSDC(:, m) = F%qSDC(:, 1)
-       do p = 1, npieces
-          F%fSDC(:, m, p) = F%fSDC(:, 1, p)
+    do m = 2, lev%nnodes
+       lev%q(:,m) = lev%q(:,1)
+       do p = 1, size(lev%f, dim=3)
+          lev%f(:,m,p) = lev%f(:,1,p)
        end do
     end do
-
   end subroutine spreadq0
 
-  subroutine echo_error(pf, level, state)
-    use feval, only: exact
-    type(pf_pfasst_t), intent(inout) :: pf
-    type(pf_level_t),  intent(inout) :: level
-    type(pf_state_t),  intent(in)    :: state
 
-    real(c_double) :: yexact(level%nvars)
+  !
+  ! Save current Q and F.
+  !
+  subroutine save(lev)
+    type(pf_level), intent(inout) :: lev
 
-    call exact(state%t0+state%dt, yexact)
-    print '("error: step: ",i3," iter: ",i3," error: ",es14.7)', &
-         state%step+1, state%iter, maxval(abs(level%qSDC(:, level%nnodes)-yexact))
-  end subroutine echo_error
+    integer :: m, p
+
+    if (lev%Finterp) then
+       if (allocated(lev%pF)) then
+          lev%pf = lev%f
+       end if
+    else
+       if (allocated(lev%pQ)) then
+          lev%pq = lev%q
+       end if
+    end if
+  end subroutine save
+
+
+  !
+  ! Apply an interpolation matrix (tmat or rmat) to src.
+  !
+  subroutine pf_apply_mat(dst, a, mat, src, zero)
+    real(pfdp), intent(  out)           :: dst(:, :)
+    real(pfdp), intent(in   )           :: a, mat(:, :), src(:,:)
+    logical,    intent(in   ), optional :: zero
+
+    logical :: lzero
+    integer :: n, m, i, j
+
+    lzero = .true.; if (present(zero)) lzero = zero
+
+    n = size(mat, dim=1)
+    m = size(mat, dim=2)
+
+    do i = 1, n
+       if (lzero) dst(:,i) = 0
+       do j = 1, m
+          dst(:,i) = dst(:,i) + a * mat(i, j) * src(:,j)
+       end do
+    end do
+  end subroutine pf_apply_mat
 
 end module pf_mod_utils

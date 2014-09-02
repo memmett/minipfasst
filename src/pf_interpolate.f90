@@ -1,85 +1,118 @@
 !
-! Copyright (c) 2012, Matthew Emmett and Michael Minion.
+! Copyright (C) 2012, 2013 Matthew Emmett and Michael Minion.
 !
-! Redistribution and use in source and binary forms, with or without
-! modification, are permitted provided that the following conditions are
-! met:
-! 
-!   1. Redistributions of source code must retain the above copyright
-!      notice, this list of conditions and the following disclaimer.
-! 
-!   2. Redistributions in binary form must reproduce the above copyright
-!      notice, this list of conditions and the following disclaimer in
-!      the documentation and/or other materials provided with the
-!      distribution.
-! 
-! THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
-! "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
-! LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
-! A PARTICULAR PURPOSE ARE DISCLAIMED.  IN NO EVENT SHALL THE COPYRIGHT
-! HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
-! SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
-! LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
-! DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
-! THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-! (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
-! OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-! 
+! This file is part of LIBPFASST.
+!
+! LIBPFASST is free software: you can redistribute it and/or modify it
+! under the terms of the GNU General Public License as published by
+! the Free Software Foundation, either version 3 of the License, or
+! (at your option) any later version.
+!
+! LIBPFASST is distributed in the hope that it will be useful, but
+! WITHOUT ANY WARRANTY; without even the implied warranty of
+! MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+! General Public License for more details.
+!
+! You should have received a copy of the GNU General Public License
+! along with LIBPFASST.  If not, see <http://www.gnu.org/licenses/>.
+!
 
 module pf_mod_interpolate
+  use pf_mod_dtype
+  use pf_mod_restrict
+  use pf_mod_hooks
+  use pf_mod_utils
+  use sweeper
+  use transfer
   implicit none
 contains
 
-  ! Interpolate (in time and space) G to F.
+  !
+  ! Interpolate (in time and space) levG to levF.
   !
   ! Interpolation is done by interpolating increments.  The fine
   ! function values are re-evaluated after interpolation.
-  subroutine interpolate_time_space(pf, t0, dt, F, G)
-    use pf_mod_dtype
-    use pf_mod_restrict
-    use pf_mod_sweep
-    use transfer
+  !
+  subroutine interpolate_time_space(pf, t0, dt, levF, levG, Finterp)
+    type(pf_pfasst), intent(inout)           :: pf
+    real(pfdp),      intent(in   )           :: t0, dt
+    type(pf_level),  intent(inout)           :: levF, levG
+    logical,         intent(in   ), optional :: Finterp !  if true, then do interp on f not q
 
-    type(pf_pfasst_t), intent(inout) :: pf
-    double precision,  intent(in)    :: t0, dt
-    type(pf_level_t),  intent(inout) :: F, G
+    integer    :: m, p
+    real(pfdp) :: tF(levF%nnodes)
+    real(pfdp) :: tG(levG%nnodes)
+    logical    :: Finterp_loc
 
-    integer          :: m, n, trat
-    double precision :: tm(F%nnodes)
-    double precision :: &
-         qSDCFx(G%nvars, G%nnodes), &
-         delG(G%nvars, G%nnodes), &
-         delGF(F%nvars, G%nnodes)
-    
-    ! interpolate increments
-    call restrict_time_space(F%qSDC, qSDCFx, F%nnodes, G%nnodes, F, G)
+    real(pfdp) ::  delG(levG%ndofs,levG%nnodes)   ! coarse in time and space
+    real(pfdp) ::  delGF(levF%ndofs,levG%nnodes)  ! coarse in time but fine in space
 
-    do m = 1, G%nnodes
-       delG(:, m) = G%qSDC(:, m) - qSDCFx(:, m)
-       delGF(:, m) = 0.0d0
-       call interpolate(delGF(:, m), delG(:, m), F%level, G%level)
+    call call_hooks(pf, levF%level, PF_PRE_INTERP_ALL)
+
+    ! set time at coarse and fine nodes
+    tG = t0 + dt * levG%nodes
+    tF = t0 + dt * levF%nodes
+
+    delG = levG%Q - levG%pQ
+
+    ! interpolate q
+    do m = 1, levG%nnodes
+       call interpolate(delGF(:,m), delG(:,m), levF, levG, tG(m))
     end do
 
-    trat = (F%nnodes-1) / (G%nnodes-1)
-    if (trat .ne. 2) stop
+    ! interpolate corrections
+    call pf_apply_mat(levF%Q, 1.0_pfdp, levF%tmat, delGF, .false.)
 
-    do m = 1, G%nnodes
-       F%qSDC(:, trat*m-1) = F%qSDC(:, trat*m-1) + delGF(:, m)
-    end do
+    Finterp_loc = .false.
+    if(present(Finterp)) then
+       if  (Finterp)  then
+          Finterp_loc = .true.
+       end if
+    end if
 
-    if (F%nnodes > G%nnodes) then
-       do n = 1, F%nnodes - G%nnodes
-          do m = 1, G%nnodes
-             F%qSDC(:, 2*n) = F%qSDC(:, 2*n) + F%tmat(m, n) * delGF(:, m)
-          end do
+    if (Finterp_loc) then
+       ! interpolate f
+       do p = 1, size(levG%F, dim=3)
+          delG = levG%F(:,:,p) - levG%pF(:,:,p)
+
+          do m = 1, levG%nnodes
+            call interpolate(delGF(:,m), delG(:,m), levF, levG, tG(m))
+         end do
+
+         ! interpolate corrections  in time
+         call pf_apply_mat(levF%F(:,:,p), 1.0_pfdp, levF%tmat, delGF, .false.)
+
+       end do
+    else
+       ! recompute fs
+       do m = 1, levF%nnodes
+          call evaluate(levF, tF(m), m)
        end do
     end if
 
-    ! recompute fs
-    tm = t0 + dt*F%nodes
-    do m = 1, F%nnodes
-       call sdceval(tm(m), m, F)
-    end do
+    ! reset qend so that it is up to date
+    levF%qend = levF%Q(:,levF%nnodes)
+
+    call call_hooks(pf, levF%level, PF_POST_INTERP_ALL)
   end subroutine interpolate_time_space
+
+  subroutine interpolate_q0(pf, levF, levG)
+    !  Use to update the fine initial condition from increment
+
+    type(pf_pfasst), intent(inout) :: pf
+    type(pf_level),  intent(inout) :: levF, levG
+
+    real(pfdp) :: delG(levG%ndofs), delF(levF%ndofs)
+
+    call call_hooks(pf, levF%level, PF_PRE_INTERP_Q0)
+
+    call restrict(levF%q0, delG, levF, levG, pf%t0)
+    delG = delG - levG%q0
+
+    call interpolate(delF, delG, levF, levG, pf%t0)
+    levF%q0 = levF%q0 + delF
+
+    call call_hooks(pf, levF%level, PF_POST_INTERP_Q0)
+  end subroutine interpolate_q0
 
 end module pf_mod_interpolate

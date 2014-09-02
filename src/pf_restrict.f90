@@ -1,124 +1,166 @@
 !
-! Copyright (c) 2012, Matthew Emmett and Michael Minion.
+! Copyright (C) 2012, 2013 Matthew Emmett and Michael Minion.
 !
-! Redistribution and use in source and binary forms, with or without
-! modification, are permitted provided that the following conditions are
-! met:
-! 
-!   1. Redistributions of source code must retain the above copyright
-!      notice, this list of conditions and the following disclaimer.
-! 
-!   2. Redistributions in binary form must reproduce the above copyright
-!      notice, this list of conditions and the following disclaimer in
-!      the documentation and/or other materials provided with the
-!      distribution.
-! 
-! THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
-! "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
-! LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
-! A PARTICULAR PURPOSE ARE DISCLAIMED.  IN NO EVENT SHALL THE COPYRIGHT
-! HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
-! SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
-! LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
-! DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
-! THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-! (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
-! OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-! 
+! This file is part of LIBPFASST.
+!
+! LIBPFASST is free software: you can redistribute it and/or modify it
+! under the terms of the GNU General Public License as published by
+! the Free Software Foundation, either version 3 of the License, or
+! (at your option) any later version.
+!
+! LIBPFASST is distributed in the hope that it will be useful, but
+! WITHOUT ANY WARRANTY; without even the implied warranty of
+! MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+! General Public License for more details.
+!
+! You should have received a copy of the GNU General Public License
+! along with LIBPFASST.  If not, see <http://www.gnu.org/licenses/>.
+!
 
 ! Restriction and FAS routines.
 
+!
+! Notes:
+!
+!   2013-04-30 - Matthew Emmett
+!
+!     The pf_residual subroutine is now called after each SDC sweep,
+!     and it computes the '0 to node' integrals and stores them in
+!     'F%I' while it is computing the full SDC residual.  Furthermore,
+!     these 'F%I' integrals also contain the appropriate tau corrections.
+!
+!     This means that when computing FAS corrections: the fine
+!     integral term is already done for us, and it is already FAS
+!     corrected, so we dont't have to "bring down fas corrections"
+!     from finer levels.
+!
+!
+!   2013-04-17 - Matthew Emmett
+!
+!     Time restriction was switched from point injection to polynomial
+!     interpolation (ie, using the 'rmat's in each level) so that we
+!     can use proper nodes for each level.
+!
+!     To recover point injection (ie, use copy instead of axpy)
+!     properly we should really do some masking trickery with the
+!     restriction matrices (rmat).  XXX.
+!
+!     Finally, perhaps the workspaces should be preallocated (along
+!     with interpolation workspaces...).  XXX
+!
+
 module pf_mod_restrict
+  use pf_mod_dtype
+  use pf_mod_hooks
+  use sweeper
+  use transfer
   implicit none
 contains
 
+
+  !
+  ! Restrict (in time and space) qF to qG.
+  !
+  subroutine restrict_sdc(levF, levG, qF, qG, integral, tF)
+    use pf_mod_utils, only: pf_apply_mat
+
+    type(pf_level), intent(inout) :: LevF, LevG
+    real(pfdp),     intent(inout) :: qF(:,:), qG(:,:)
+    logical,        intent(in   ) :: integral
+    real(pfdp),     intent(in   ) :: tF(:)
+
+    real(pfdp) :: qFr(levG%ndofs,levF%nnodes)
+    integer :: m
+
+    if (integral) then
+
+       do m = 1, levF%nnodes-1
+          call restrict(qF(:,m), qFr(:,m), levF, levG, tF(m))
+       end do
+
+       ! when restricting '0 to node' integral terms, skip the first
+       ! entry since it is zero
+       call pf_apply_mat(qG, 1.d0, levF%rmat(2:,2:), qFr)
+
+    else
+
+       do m = 1, levF%nnodes
+          call restrict(qF(:,m), qFr(:,m), levF, LevG, tF(m))
+       end do
+
+       call pf_apply_mat(qG, 1.d0, levF%rmat, qFr)
+
+    end if
+
+  end subroutine restrict_sdc
+
+
+  !
   ! Restrict (in time and space) F to G and set G's FAS correction.
   !
   ! The coarse function values are re-evaluated after restriction.
-  subroutine restrict_time_space_fas(pf, t0, dt, F, G)
-    use pf_mod_dtype
-    use pf_mod_utils
-    use pf_mod_sweep
-    use transfer, only: restrict
+  ! Note that even if the number of variables and nodes is the same,
+  ! we should still compute the FAS correction since the function
+  ! evaluations may be different.
+  !
+  subroutine restrict_time_space_fas(pf, t0, dt, levF, levG)
+    type(pf_pfasst), intent(inout) :: pf
+    real(pfdp),        intent(in)    :: t0, dt
+    type(pf_level),  intent(inout) :: levF, levG
 
-    type(pf_pfasst_t), intent(inout) :: pf
-    double precision,  intent(in)    :: t0, dt
-    type(pf_level_t),  intent(inout) :: F, G
+    integer    :: m
+    real(pfdp) :: tG(levG%nnodes)
+    real(pfdp) :: tF(levF%nnodes)
+    real(pfdp) :: &
+         tmpG(levG%ndofs,levG%nnodes), &    ! coarse integral of coarse function values
+         tmpF(levF%ndofs,levF%nnodes), &    ! fine integral of fine function values
+         tmpFr(levG%ndofs,levG%nnodes)      ! coarse integral of restricted fine function values
 
-    integer :: m, mc, trat
-    double precision :: tm(G%nnodes)
-    double precision :: &
-         CofG(G%nvars, G%nnodes-1), &    ! coarse integral of coarse function values
-         FofF(F%nvars, F%nnodes-1), &    ! fine integral of fine function values
-         CofF(G%nvars, G%nnodes-1), &    ! coarse integral of restricted fine function values
-         tmp(G%nvars)
+    call call_hooks(pf, levF%level, PF_PRE_RESTRICT_ALL)
 
-    trat = (F%nnodes - 1) / (G%nnodes - 1)
+    !
+    ! restrict q's and recompute f's
+    !
+    tG = t0 + dt * levG%nodes
+    tF = t0 + dt * levF%nodes
 
-    ! note: even if the number of variables and nodes is the same, we
-    ! should still compute the fas correction since the function
-    ! evaluations may be different
+    call restrict_sdc(levF, levG, levF%Q, levG%Q, .false., tF)
 
-    !!!! restrict qs and recompute fs
-    call restrict_time_space(F%qSDC, G%qSDC, F%nnodes, G%nnodes, F, G)
-
-    tm = t0 + dt*G%nodes
-    do m = 1, G%nnodes
-       call sdceval(tm(m), m, G)
+    do m = 1, levG%nnodes
+       call evaluate(levG, tG(m), m)
     end do
 
-    !!!! bring down fas correction from level above
-    G%tau = 0.0d0
+    !
+    ! fas correction
+    !
+    levG%tau = 0
 
-    if (associated(F%tau)) then
-       ! restrict fine fas corrections and sum between coarse nodes
-       do m = 1, F%nnodes-1
-          mc = int(ceiling(1.0d0*m/trat))
-          call restrict(F%tau(:, m), tmp, F%level, G%level)
-          G%tau(:, mc) = G%tau(:, mc) + tmp
+    if (pf%iter >= pf%taui0)  then
+
+       ! compute '0 to node' integral on the coarse level
+       call integrate(levG, levG%Q, levG%F, dt, tmpG)
+       do m = 2, levG%nnodes-1
+          tmpG(:,m) = tmpG(:,m) - tmpG(:,m-1)
+       end do
+
+       ! compute '0 to node' integral on the fine level
+       call integrate(levF, levF%Q, levF%F, dt, tmpF)
+       do m = 2, levF%nnodes-1
+          tmpF(:,m) = tmpF(:,m) - tmpF(:,m-1)
+       end do
+
+       ! restrict '0 to node' integral on the fine level
+       call restrict_sdc(levF, levG, tmpF, tmpFr, .true., tF)
+
+       ! compute 'node to node' tau correction
+       levG%tau(:,1) = tmpFr(:,1) - tmpG(:,1)
+       do m = 2, levG%nnodes-1
+          levG%tau(:,m) = tmpFr(:,m) - tmpFr(:,m-1) - ( tmpG(:,m) - tmpG(:,m-1) )
        end do
     end if
 
-    ! fas correction
-    call sdc_integrate(G%qSDC, G%fSDC, dt, G, CofG)
-    call sdc_integrate(F%qSDC, F%fSDC, dt, F, FofF)
+    call call_hooks(pf, levF%level, PF_POST_RESTRICT_ALL)
 
-    CofF = 0.0d0
-
-    ! restrict fine function values and sum between coarse nodes
-    do m = 1, F%nnodes-1
-       mc = int(ceiling(1.0d0*m/trat))
-       call restrict(FofF(:, m), tmp, F%level, G%level)
-       CofF(:, mc) = CofF(:, mc) + tmp
-    end do
-
-    G%tau = G%tau + CofF - CofG
   end subroutine restrict_time_space_fas
 
-
-  ! Restrict qSDCF to qSDCG.
-  subroutine restrict_time_space(qSDCF, qSDCG, nnodesF, nnodesG, F, G)
-    use pf_mod_dtype
-    use transfer, only: restrict
-
-    integer,          intent(in)    :: nnodesF, nnodesG
-    type(pf_level_t), intent(in)    :: F 
-    type(pf_level_t), intent(inout) :: G
-    double precision, intent(inout) :: qSDCF(F%nvars, nnodesF)
-    double precision, intent(inout) :: qSDCG(G%nvars, nnodesG)
-
-    integer :: m, trat
-
-    if (nnodesG > 1) then
-       trat = (nnodesF-1)/(nnodesG-1)
-    else
-       trat = 1
-    end if
-
-    do m = 1, nnodesG
-       call restrict(qSDCF(:, trat*(m-1)+1), qSDCG(:, m), F%level, G%level)
-    end do
-  end subroutine restrict_time_space
-
 end module pf_mod_restrict
-
