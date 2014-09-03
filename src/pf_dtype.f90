@@ -1,26 +1,12 @@
 !
 ! Copyright (C) 2014 Matthew Emmett and Michael Minion.
 !
-! This file is part of MINIPFASST.
-!
-! MINIPFASST is free software: you can redistribute it and/or modify it
-! under the terms of the GNU General Public License as published by
-! the Free Software Foundation, either version 3 of the License, or
-! (at your option) any later version.
-!
-! MINIPFASST is distributed in the hope that it will be useful, but
-! WITHOUT ANY WARRANTY; without even the implied warranty of
-! MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
-! General Public License for more details.
-!
-! You should have received a copy of the GNU General Public License
-! along with MINIPFASST.  If not, see <http://www.gnu.org/licenses/>.
-!
 
 module pf_mod_dtype
+  use pf_mod_config
+  use sweeper_dtype
+  use user_dtype
   implicit none
-
-  integer, parameter :: pfdp = kind(0.d0)
 
   integer, parameter :: PF_MAX_HOOKS = 32
 
@@ -41,14 +27,6 @@ module pf_mod_dtype
   type :: pf_hook
      procedure(pf_hook_p), pointer, nopass :: proc
   end type pf_hook
-
-  integer, parameter :: npieces = 2
-
-  type :: pf_sweeper
-     real(pfdp), allocatable :: &
-          expl_mat(:,:), &      ! explicit integration matrix
-          impl_mat(:,:)         ! implicit integration matrix
-  end type pf_sweeper
 
   type :: pf_level
      integer     :: ndofs = -1          ! number of degrees-of-freedom
@@ -79,6 +57,7 @@ module pf_mod_dtype
           nflags(:)                     ! sdc node flags
 
      type(pf_sweeper) :: sweeper
+     type(pf_user) :: user
   end type pf_level
 
   type :: pf_comm

@@ -22,5 +22,9 @@ include $(MINIPFASST)/Makefile.rules
 # dependencies
 #
 
+build/user.o: build/pf_dtype.o
+build/feval.o: build/user.o
+build/hooks.o: build/feval.o
+build/sweeper.o: build/feval.o
 build/transfer.o: build/feval.o
-build/main.o:  build/feval.o build/transfer.o build/hooks.o
+build/main.o:  build/feval.o build/transfer.o build/hooks.o build/pfasst.o

@@ -13,6 +13,7 @@ include $(wildcard $(LIBPFASST)/*.defs)
 VPATHS += $(MINIPFASST)/src
 
 FSRC = src/pfasst.f90 \
+       src/pf_config.f90 \
        src/pf_dtype.f90 \
        src/pf_interpolate.f90 \
        src/pf_mpi.f90 \
@@ -26,6 +27,9 @@ FSRC = src/pfasst.f90 \
        src/sdc_poly.f90 \
        src/sdc_quadrature.f90 \
        src/sweeper.f90 \
-       src/transfer.f90
+       src/sweeper_dtype.f90 \
+       src/transfer.f90 \
+       src/user.f90 \
+       src/user_dtype.f90
 
 OBJ = $(subst src,build,$(FSRC:.f90=.o) $(CSRC:.c=.o))

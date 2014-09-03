@@ -1,20 +1,5 @@
 !
-! Copyright (C) 2012, 2013 Matthew Emmett and Michael Minion.
-!
-! This file is part of LIBPFASST.
-!
-! LIBPFASST is free software: you can redistribute it and/or modify it
-! under the terms of the GNU General Public License as published by
-! the Free Software Foundation, either version 3 of the License, or
-! (at your option) any later version.
-!
-! LIBPFASST is distributed in the hope that it will be useful, but
-! WITHOUT ANY WARRANTY; without even the implied warranty of
-! MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
-! General Public License for more details.
-!
-! You should have received a copy of the GNU General Public License
-! along with LIBPFASST.  If not, see <http://www.gnu.org/licenses/>.
+! Copyright (C) 2014 Matthew Emmett and Michael Minion.
 !
 
 module pf_mod_hooks
@@ -41,7 +26,6 @@ module pf_mod_hooks
        PF_PRE_CONVERGENCE   = 17, &
        PF_POST_CONVERGENCE  = 18, &
        PF_MAX_HOOK          = 18
-
 
   integer, parameter :: &
        PF_HOOK_LOG_ONE  = 1, &
@@ -88,7 +72,6 @@ contains
        pf%nhooks(level,hook) = pf%nhooks(level,hook) + 1
        pf%hooks(level,hook,pf%nhooks(level,hook))%proc => proc
     end if
-
   end subroutine pf_add_hook
 
   ! Call hooks associated with the hook and level

@@ -1,27 +1,15 @@
 !
-! Copyright (C) 2014 Matthew Emmett.
+! Copyright (C) 2014 Matthew Emmett and Michael Minion.
 !
-! This file is part of LIBPFASST.
+
 !
-! LIBPFASST is free software: you can redistribute it and/or modify it
-! under the terms of the GNU General Public License as published by
-! the Free Software Foundation, either version 3 of the License, or
-! (at your option) any later version.
-!
-! LIBPFASST is distributed in the hope that it will be useful, but
-! WITHOUT ANY WARRANTY; without even the implied warranty of
-! MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
-! General Public License for more details.
-!
-! You should have received a copy of the GNU General Public License
-! along with LIBPFASST.  If not, see <http://www.gnu.org/licenses/>.
+! Implementation of IMEX sweeper.
 !
 
 module sweeper
   use pf_mod_dtype
   use feval
   implicit none
-
 contains
 
   ! Perform on SDC sweep on level lev and set qend appropriately.
@@ -77,27 +65,6 @@ contains
     call f2eval(lev%Q(:,m), t, lev, lev%F(:,m,2))
   end subroutine evaluate
 
-  ! Initialize matrices
-  subroutine initialize(lev)
-    type(pf_level), intent(inout) :: lev
-
-    real(pfdp) :: dsdc(lev%nnodes-1)
-    integer    :: m, nnodes
-
-    nnodes = lev%nnodes
-    allocate(lev%sweeper%expl_mat(nnodes-1,nnodes))  !  S-FE
-    allocate(lev%sweeper%impl_mat(nnodes-1,nnodes))  !  S-BE
-
-    lev%sweeper%expl_mat = lev%smat
-    lev%sweeper%impl_mat = lev%smat
-
-    dsdc = lev%nodes(2:nnodes) - lev%nodes(1:nnodes-1)
-    do m = 1, nnodes-1
-       lev%sweeper%expl_mat(m,m)   = lev%sweeper%expl_mat(m,m)   - dsdc(m)
-       lev%sweeper%impl_mat(m,m+1) = lev%sweeper%impl_mat(m,m+1) - dsdc(m)
-    end do
-  end subroutine initialize
-
   ! Compute SDC integral
   subroutine integrate(lev, qSDC, fSDC, dt, fintSDC)
     type(pf_level), intent(in   ) :: lev
@@ -118,12 +85,30 @@ contains
     end do
   end subroutine integrate
 
-  ! subroutine pf_imex_destroy(sweeper)
-  !   type(pf_sweeper_t), intent(inout) :: sweeper
-  !   type(pf_imex_t), pointer :: imex
-  !   call c_f_pointer(sweeper%sweeperctx, imex)
-  !   deallocate(lev%sweeper%impl_mat)
-  !   deallocate(lev%sweeper%expl_mat)
-  ! end subroutine pf_imex_destroy
+  ! Initialize matrices
+  subroutine sweeper_setup(lev)
+    type(pf_level), intent(inout) :: lev
+    real(pfdp) :: dsdc(lev%nnodes-1)
+    integer    :: m, nnodes
+
+    nnodes = lev%nnodes
+    allocate(lev%sweeper%expl_mat(nnodes-1,nnodes)) ! S-FE
+    allocate(lev%sweeper%impl_mat(nnodes-1,nnodes)) ! S-BE
+
+    lev%sweeper%expl_mat = lev%smat
+    lev%sweeper%impl_mat = lev%smat
+
+    dsdc = lev%nodes(2:nnodes) - lev%nodes(1:nnodes-1)
+    do m = 1, nnodes-1
+       lev%sweeper%expl_mat(m,m)   = lev%sweeper%expl_mat(m,m)   - dsdc(m)
+       lev%sweeper%impl_mat(m,m+1) = lev%sweeper%impl_mat(m,m+1) - dsdc(m)
+    end do
+  end subroutine sweeper_setup
+
+  subroutine sweeper_destroy(lev)
+    type(pf_level), intent(inout) :: lev
+    deallocate(lev%sweeper%impl_mat)
+    deallocate(lev%sweeper%expl_mat)
+  end subroutine sweeper_destroy
 
 end module sweeper

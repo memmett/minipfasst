@@ -1,52 +1,9 @@
 !
-! Copyright (C) 2012, 2013 Matthew Emmett and Michael Minion.
-!
-! This file is part of LIBPFASST.
-!
-! LIBPFASST is free software: you can redistribute it and/or modify it
-! under the terms of the GNU General Public License as published by
-! the Free Software Foundation, either version 3 of the License, or
-! (at your option) any later version.
-!
-! LIBPFASST is distributed in the hope that it will be useful, but
-! WITHOUT ANY WARRANTY; without even the implied warranty of
-! MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
-! General Public License for more details.
-!
-! You should have received a copy of the GNU General Public License
-! along with LIBPFASST.  If not, see <http://www.gnu.org/licenses/>.
+! Copyright (C) 2014 Matthew Emmett and Michael Minion.
 !
 
+!
 ! Restriction and FAS routines.
-
-!
-! Notes:
-!
-!   2013-04-30 - Matthew Emmett
-!
-!     The pf_residual subroutine is now called after each SDC sweep,
-!     and it computes the '0 to node' integrals and stores them in
-!     'F%I' while it is computing the full SDC residual.  Furthermore,
-!     these 'F%I' integrals also contain the appropriate tau corrections.
-!
-!     This means that when computing FAS corrections: the fine
-!     integral term is already done for us, and it is already FAS
-!     corrected, so we dont't have to "bring down fas corrections"
-!     from finer levels.
-!
-!
-!   2013-04-17 - Matthew Emmett
-!
-!     Time restriction was switched from point injection to polynomial
-!     interpolation (ie, using the 'rmat's in each level) so that we
-!     can use proper nodes for each level.
-!
-!     To recover point injection (ie, use copy instead of axpy)
-!     properly we should really do some masking trickery with the
-!     restriction matrices (rmat).  XXX.
-!
-!     Finally, perhaps the workspaces should be preallocated (along
-!     with interpolation workspaces...).  XXX
 !
 
 module pf_mod_restrict

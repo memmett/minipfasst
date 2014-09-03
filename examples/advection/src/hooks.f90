@@ -1,5 +1,5 @@
 !
-! Copyright (c) 2012, Matthew Emmett and Michael Minion.  All rights reserved.
+! Copyright (c) 2014, Matthew Emmett and Michael Minion.  All rights reserved.
 !
 
 module hooks

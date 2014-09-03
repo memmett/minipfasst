@@ -1,13 +1,12 @@
 !
-! Simple example of using LIBPFASST.
+! Simple example of using MINIPFASST.
 !
 
 program main
   use pfasst
   use pf_mod_mpi, only: MPI_COMM_WORLD
-  use feval
+  use feval, only: initial
   use hooks
-  use transfer
 
   implicit none
 
@@ -32,15 +31,15 @@ program main
   ! initialize pfasst
   !
 
+  dt = 0.01_pfdp
   ndofs  = [ 32, 64, 128 ]   ! number of dofs on the time/space levels
   nnodes = [ 2, 3, 5 ]       ! number of sdc nodes on time/space levels
-  dt     = 0.01_pfdp
-
-  call pf_mpi_create(comm, MPI_COMM_WORLD)
-  call pf_pfasst_create(pf, comm, maxlevs)
 
   pf%qtype  = SDC_GAUSS_LOBATTO
   pf%niters = 4
+
+  call pf_mpi_create(comm, MPI_COMM_WORLD)
+  call pf_pfasst_create(pf, comm, maxlevs)
 
   if (pf%nlevels > 1) then
      pf%levels(1)%nsweeps = 2
@@ -48,8 +47,6 @@ program main
 
   call pf_mpi_setup(comm, pf)
   call pf_pfasst_setup(pf, ndofs, nnodes)
-
-  call feval_create_workspaces(ndofs)
 
   !
   ! compute initial condition, add hooks, run
@@ -59,7 +56,6 @@ program main
   call initial(q0)
 
   call pf_print_options(pf, show_mats=.true.)
-
   call pf_add_hook(pf, -1, PF_POST_SWEEP, echo_error)
   call pf_pfasst_run(pf, q0, dt, 0.0d0, nsteps_in=4)
 
@@ -68,8 +64,6 @@ program main
   !
 
   deallocate(q0)
-  call feval_destroy_workspaces()
-
   call pf_pfasst_destroy(pf)
   call pf_mpi_destroy(comm)
   call mpi_finalize(err)

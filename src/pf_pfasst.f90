@@ -1,25 +1,11 @@
 !
-! Copyright (C) 2012, 2013 Matthew Emmett and Michael Minion.
-!
-! This file is part of LIBPFASST.
-!
-! LIBPFASST is free software: you can redistribute it and/or modify it
-! under the terms of the GNU General Public License as published by
-! the Free Software Foundation, either version 3 of the License, or
-! (at your option) any later version.
-!
-! LIBPFASST is distributed in the hope that it will be useful, but
-! WITHOUT ANY WARRANTY; without even the implied warranty of
-! MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
-! General Public License for more details.
-!
-! You should have received a copy of the GNU General Public License
-! along with LIBPFASST.  If not, see <http://www.gnu.org/licenses/>.
+! Copyright (C) 2014 Matthew Emmett and Michael Minion.
 !
 
 module pf_mod_pfasst
   use pf_mod_dtype
   use sweeper
+  use user
   implicit none
 contains
 
@@ -28,7 +14,6 @@ contains
   !
   subroutine pf_pfasst_create(pf, comm, nlevels, fname, nocmd)
     use pf_mod_hooks, only: PF_MAX_HOOK
-
     use pf_mod_options
     type(pf_pfasst),  intent(inout)           :: pf
     type(pf_comm),    intent(inout), target   :: comm
@@ -41,15 +26,14 @@ contains
 
     if (present(nlevels)) pf%nlevels = nlevels
 
-    ! gather some input from a file and command line
     read_cmd = .true.
     if (present(nocmd)) then
-         if (nocmd)  read_cmd = .false.
+         if (nocmd) read_cmd = .false.
     end if
     if (present(fname))  then
        call pf_read_opts(pf, read_cmd, fname)
     else
-       if (read_cmd)   call pf_read_opts(pf, read_cmd)
+       call pf_read_opts(pf, read_cmd)
     end if
 
     pf%comm => comm
@@ -68,7 +52,8 @@ contains
     type(pf_pfasst), intent(inout) :: pf
     integer,         intent(in   ) :: ndofs(:), nnodes(:)
 
-    integer :: l, nnodesF, nnodesG
+    integer :: l
+    type(pf_level), pointer :: fine, crse
 
     if (pf%rank < 0) then
        stop 'invalid PF rank: did you call setup correctly?'
@@ -85,16 +70,14 @@ contains
     end do
 
     do l = pf%nlevels, 2, -1
-       nnodesF = pf%levels(l)%nnodes
-       nnodesG = pf%levels(l-1)%nnodes
+       fine => pf%levels(l)
+       crse => pf%levels(l-1)
 
-       allocate(pf%levels(l)%tmat(nnodesF,nnodesG))
-       call pf_time_interpolation_matrix(pf%levels(l)%nodes, nnodesF, pf%levels(l-1)%nodes, nnodesG, pf%levels(l)%tmat)
-
-       allocate(pf%levels(l)%rmat(nnodesG,nnodesF))
-       call pf_time_interpolation_matrix(pf%levels(l-1)%nodes, nnodesG, pf%levels(l)%nodes, nnodesF, pf%levels(l)%rmat)
+       allocate(fine%tmat(fine%nnodes,crse%nnodes))
+       allocate(fine%rmat(crse%nnodes,fine%nnodes))
+       call pf_time_interpolation_matrix(fine%nodes, fine%nnodes, crse%nodes, crse%nnodes, fine%tmat)
+       call pf_time_interpolation_matrix(crse%nodes, crse%nnodes, fine%nodes, fine%nnodes, fine%rmat)
     end do
-
   end subroutine pf_pfasst_setup
 
   !
@@ -110,43 +93,38 @@ contains
 
     integer :: m, p, ndofs, nnodes
 
-    !
-    ! do some sanity checks
-    !
-
-    if (lev%ndofs <= 0) stop "ERROR: Invalid nvars/dofs (pf_pfasst.f90)."
-    if (lev%nnodes <= 0) stop "ERROR: Invalid nnodes (pf_pfasst.f90)."
+    if (lev%ndofs <= 0)   stop "ERROR: Invalid nvars/dofs (pf_pfasst.f90)."
+    if (lev%nnodes <= 0)  stop "ERROR: Invalid nnodes (pf_pfasst.f90)."
     if (lev%nsweeps <= 0) stop "ERROR: Invalid nsweeps (pf_pfasst.f90)."
-    ! if (.not. associated(lev%encap)) stop "ERROR: Missing encapsulation (pf_pfasst.f90)."
-    ! if (.not. associated(lev%interpolate)) stop "ERROR: Missing spatial interpolation (pf_pfasst.f90)."
-    ! if (.not. associated(lev%restrict)) stop "ERROR: Missing spatial restriction (pf_pfasst.f90)."
 
-    ndofs   = lev%ndofs
-    nnodes  = lev%nnodes
+    ndofs  = lev%ndofs
+    nnodes = lev%nnodes
 
-    ! lev%residual = -1.0_pfdp
+    lev%residual = -1
 
-    !
-    ! allocate tau
-    !
-    if ((lev%level < pf%nlevels)) then
+    if (lev%level < pf%nlevels) then
        allocate(lev%tau(ndofs,nnodes-1))
     end if
 
-    !
-    ! allocate flat buffers (q0, send, and recv)
-    !
     allocate(lev%q0(ndofs))
     allocate(lev%send(ndofs))
     allocate(lev%recv(ndofs))
-
-    !
-    ! nodes, flags, and integration matrices
-    !
     allocate(lev%nodes(nnodes))
     allocate(lev%nflags(nnodes))
     allocate(lev%smat(nnodes-1,nnodes))
     allocate(lev%qmat(nnodes-1,nnodes))
+    allocate(lev%qend(ndofs))
+    allocate(lev%Q(ndofs,nnodes))
+    allocate(lev%F(ndofs,nnodes,npieces))
+
+    if (lev%level < pf%nlevels) then
+       if (lev%Finterp) then
+          allocate(lev%pF(ndofs,nnodes,npieces))
+          allocate(lev%pQ(ndofs,nnodes))
+       else
+          allocate(lev%pQ(ndofs,nnodes))
+       end if
+    end if
 
     if (btest(pf%qtype, 8)) then
        call pf_quadrature(pf%qtype, nnodes, pf%levels(1)%nnodes, &
@@ -156,46 +134,9 @@ contains
             lev%nodes, lev%nflags, lev%smat, lev%qmat)
     end if
 
-    call initialize(lev)
-
-    !
-    ! allocate Q and F
-    !
-    allocate(lev%Q(ndofs,nnodes))
-    allocate(lev%F(ndofs,nnodes,npieces))
-
-    ! !
-    ! ! allocate S, I, and R
-    ! !
-    ! allocate(lev%S(ndofs,nnodes-1))
-    ! allocate(lev%I(ndofs,nnodes-1))
-    ! allocate(lev%R(ndofs,nnodes-1))
-
-    !
-    ! allocate pQ and pF
-    !
-    if (lev%level < pf%nlevels) then
-
-       if (lev%Finterp) then
-          ! store F and Q(1) only
-          ! Changed by MM Dec. 20, 2013 to allocate all pQ as well
-          !
-          allocate(lev%pF(ndofs,nnodes,npieces))
-          allocate(lev%pQ(ndofs,nnodes))
-       else
-          ! store Q
-          allocate(lev%pQ(ndofs,nnodes))
-       end if
-
-    end if
-
-    !
-    ! allocate Qend
-    !
-    allocate(lev%qend(ndofs))
-
+    call sweeper_setup(lev)
+    call user_setup(lev)
   end subroutine pf_level_setup
-
 
   !
   ! Deallocate PFASST object
@@ -223,27 +164,15 @@ contains
 
     integer :: m, p
 
-    ! flat buffers
     deallocate(lev%q0)
     deallocate(lev%send)
     deallocate(lev%recv)
-
-    ! nodes, flags, and integration matrices
     deallocate(lev%nodes)
     deallocate(lev%nflags)
     deallocate(lev%qmat)
     deallocate(lev%smat)
-
-    ! Q and F
     deallocate(lev%Q)
     deallocate(lev%F)
-
-    ! S, I, and R
-    ! deallocate(lev%S)
-    ! deallocate(lev%I)
-    ! deallocate(lev%R)
-
-    ! pQ and pF
     if (allocated(lev%pQ)) then
        if (lev%Finterp) then
           deallocate(lev%pF)
@@ -253,27 +182,19 @@ contains
        end if
     end if
 
-    ! qend
     deallocate(lev%qend)
-
-    ! tau
     if (allocated(lev%tau)) then
        deallocate(lev%tau)
     end if
-
-    ! other
     if (allocated(lev%tmat)) then
        deallocate(lev%tmat)
     end if
-
     if (allocated(lev%rmat)) then
        deallocate(lev%rmat)
     end if
 
-    ! kill the sweeper
-    ! call lev%sweeper%destroy(lev%sweeper)
-    ! deallocate(lev%sweeper)
-
+    call sweeper_destroy(lev)
+    call user_destroy(lev)
   end subroutine pf_level_destroy
 
 end module pf_mod_pfasst
