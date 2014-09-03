@@ -1,0 +1,35 @@
+#
+# Default build settings for libpfasst.
+#
+
+FC = mpif90
+CC = mpicc
+AR = ar rcs
+
+FFLAGS = -Ibuild -Jbuild -cpp
+
+include $(wildcard $(LIBPFASST)/*.defs)
+
+VPATHS += $(MINIPFASST)/src
+
+FSRC = src/pfasst.f90 \
+       src/pf_config.f90 \
+       src/pf_dtype.f90 \
+       src/pf_interpolate.f90 \
+       src/pf_mpi.f90 \
+       src/pf_options.f90 \
+       src/pf_parallel.f90 \
+       src/pf_pfasst.f90 \
+       src/pf_quadrature.f90 \
+       src/pf_restrict.f90 \
+       src/pf_utils.f90 \
+       src/pf_hooks.f90 \
+       src/sdc_poly.f90 \
+       src/sdc_quadrature.f90 \
+       src/sweeper.f90 \
+       src/sweeper_dtype.f90 \
+       src/transfer.f90 \
+       src/user.f90 \
+       src/user_dtype.f90
+
+OBJ = $(subst src,build,$(FSRC:.f90=.o) $(CSRC:.c=.o))

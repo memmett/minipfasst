@@ -1,196 +1,322 @@
 !
-! Copyright (c) 2012, Matthew Emmett and Michael Minion.
+! Copyright (C) 2014 Matthew Emmett and Michael Minion.
 !
-! Redistribution and use in source and binary forms, with or without
-! modification, are permitted provided that the following conditions are
-! met:
-! 
-!   1. Redistributions of source code must retain the above copyright
-!      notice, this list of conditions and the following disclaimer.
-! 
-!   2. Redistributions in binary form must reproduce the above copyright
-!      notice, this list of conditions and the following disclaimer in
-!      the documentation and/or other materials provided with the
-!      distribution.
-! 
-! THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
-! "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
-! LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
-! A PARTICULAR PURPOSE ARE DISCLAIMED.  IN NO EVENT SHALL THE COPYRIGHT
-! HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
-! SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
-! LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
-! DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
-! THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-! (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
-! OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-! 
-
-! Parallel PFASST routines.
 
 module pf_mod_parallel
+  use pf_mod_dtype
+  use pf_mod_interpolate
+  use pf_mod_restrict
+  use pf_mod_utils
+  use pf_mod_hooks
+  use pf_mod_comm_mpi
+  use sweeper
   implicit none
 contains
-  
-  ! Run in parallel using PFASST.
-  subroutine pfasst_run(pf, q0, dt, tend, nsteps, qend)
-    use pf_mod_comm
-    use pf_mod_interpolate
-    use pf_mod_restrict
-    use pf_mod_sweep
-    use pf_mod_utils
-    use transfer, only: interpolate
 
-    type(pf_pfasst_t), intent(inout) :: pf
-    double precision,  intent(in)    :: q0(:)
-    double precision,  intent(in)    :: dt, tend
-    double precision,  intent(inout), optional :: qend(:)
-    integer,           intent(in), optional    :: nsteps
+  !
+  ! Predictor.
+  !
+  ! Spreads the fine initial condition (F%q0) to all levels and all
+  ! nodes.  If we're running with more than one processor, performs
+  ! sweeps on the coarsest level.
+  !
+  ! No time communication is performed during the predictor.
+  !
+  subroutine pf_predictor(pf, dt)
+    type(pf_pfasst), intent(inout) :: pf
+    real(pfdp),      intent(in   ) :: dt
 
-    double precision :: t0
-    integer    :: nblock, b, k, j, l
-    type(pf_level_t), pointer :: F, G
+    type(pf_level), pointer :: fine, crse
+    integer    :: j, k, l
+    real(pfdp) :: t0k
 
-    pf%state%t0   = 0.0d0
-    pf%state%dt   = dt
-    pf%state%iter = -1
+    call call_hooks(pf, 1, PF_PRE_PREDICTOR)
 
-    !!!! set initial conditions
-    F => pf%levels(1)
-    F%q0 = q0
+    call spreadq0(pf%levels(pf%nlevels), pf%t0)
 
-    if(present(nsteps)) then
-       pf%state%nsteps = nsteps
-    else
-       pf%state%nsteps = ceiling(1.0*tend/dt)
-    end if
+    if (pf%nlevels > 1) then
 
-    nblock = pf%state%nsteps/pf%comm%nproc
+       do l = pf%nlevels, 2, -1
+          fine => pf%levels(l); crse => pf%levels(l-1)
+          call restrict_time_space_fas(pf, pf%t0, dt, fine, crse)
+          call save(crse)
+          crse%q0 = crse%Q(:,1)
+       end do
 
-    !!!! time "block" loop
-    do b = 1, nblock
-       pf%state%step = pf%rank + (b-1)*pf%comm%nproc
-       pf%state%t0   = pf%state%step * dt
-
-       t0 = pf%state%t0
-
-       !!!! predictor loop
-       F => pf%levels(1)
-       call spreadq0(F, t0)
-
-          do l = 1, pf%nlevels-1
-             F => pf%levels(l); G => pf%levels(l+1)
-             call restrict_time_space_fas(pf, t0, dt, F, G)
-             G%q0 = G%qSDC(:, 1)
-          end do
+       crse => pf%levels(1)
 
        if (pf%comm%nproc > 1) then
 
-          G => pf%levels(pf%nlevels)
-          do k = 1, pf%rank + 1
-             pf%state%iter = -k
+          if (pf%Pipeline_G .and. (pf%levels(1)%nsweeps > 1)) then
 
-             ! get new initial value (skip on first iteration)
-             if (k > 1) &
-                  call recv(pf, G, k-1, .true.)
+             !  this is the weird choice.  we burn in without communication, then do extra sweeps
+             do k = 1, pf%rank + 1
+                pf%iter = -k
 
-             do j = 1, G%nsweeps
-                call sweep(pf, t0, dt, G)
+                ! Get new initial value (skip on first iteration)
+                if (k > 1) then
+                   crse%q0 = crse%qend
+                   if (.not. pf%PFASST_pred) then
+                      call spreadq0(crse, pf%t0)
+                   end if
+                end if
+
+                call call_hooks(pf, crse%level, PF_PRE_SWEEP)
+                call sweep(pf, crse, pf%t0, dt)
+                ! call pf_residual(pf, crse, dt)
+                call call_hooks(pf, crse%level, PF_POST_SWEEP)
              end do
-             call send(pf, G, k, .true.)
-          end do
 
-          ! interpolate
-          do l = pf%nlevels, 2, -1
-             F => pf%levels(l-1)
-             G => pf%levels(l)
-             call interpolate_time_space(pf, t0, dt, F, G)
-             F%q0 = F%qSDC(:, 1)
+             ! now we have mimicked the burn in and we must do pipe-lined sweeps
+             do k = 1, crse%nsweeps-1
+                pf%iter =-(pf%rank + 1) -k
+
+                !  Get new initial conditions
+                call pf_recv(pf, crse, crse%level*20000+pf%rank, .true.)
+                call call_hooks(pf, crse%level, PF_PRE_SWEEP)
+                call sweep(pf, crse, pf%t0, dt)
+                call call_hooks(pf, crse%level, PF_POST_SWEEP)
+                !  Send forward
+                call pf_send(pf, crse,  crse%level*20000+pf%rank+1, .true.)
+             end do
+             ! call pf_residual(pf, crse, dt)
+
+          else
+
+             ! normal predictor burn in
+             do k = 1, pf%rank + 1
+                pf%iter = -k
+                t0k = pf%t0-(pf%rank)*dt + (k-1)*dt
+
+                ! get new initial value (skip on first iteration)
+                if (k > 1) then
+                   crse%q0 = crse%qend
+                   if (.not. pf%PFASST_pred) then
+                      call spreadq0(crse, t0k)
+                   end if
+                end if
+
+                call call_hooks(pf, crse%level, PF_PRE_SWEEP)
+                do j = 1, crse%nsweeps
+                   call sweep(pf, crse, t0k, dt)
+                end do
+                ! call pf_residual(pf, crse, dt)
+                call call_hooks(pf, crse%level, PF_POST_SWEEP)
+             end do
+          end if
+
+       else
+
+          ! Single processor... sweep on coarse and return to fine level.
+
+          do k = 1, pf%rank + 1
+             pf%iter = -k
+             t0k = pf%t0-(pf%rank)*dt + (k-1)*dt
+
+             call call_hooks(pf, crse%level, PF_PRE_SWEEP)
+             do j = 1, crse%nsweeps
+                call sweep(pf, crse, t0k, dt)
+             end do
+             ! call pf_residual(pf, crse, dt)
+             call call_hooks(pf, crse%level, PF_POST_SWEEP)
           end do
 
        end if
 
+       ! return to fine level
 
-       !!!! pfasst iterations (v-cycle)
-       do k = 1, pf%niters
-          pf%state%iter  = k
-          pf%state%cycle = 1
+       do l = 2, pf%nlevels-1
+          fine => pf%levels(l); crse => pf%levels(l-1)
+          call interpolate_time_space(pf, pf%t0, dt, fine, crse, crse%Finterp)
+          fine%q0 = fine%Q(:,1)
 
-          ! post receive requests
-          do l = 1, pf%nlevels-1
-             F => pf%levels(l)
-             call post(pf, F, F%level*100+k)
+          call call_hooks(pf, l, PF_PRE_SWEEP)
+          do j = 1, fine%nsweeps
+             call sweep(pf, fine, pf%t0, dt)
           end do
-
-          !! go down the v-cycle
-          do l = 1, pf%nlevels-1
-             pf%state%cycle = pf%state%cycle + 1
-             F => pf%levels(l)
-             G => pf%levels(l+1)
-
-             do j = 1, F%nsweeps
-                call sweep(pf, t0, dt, F)
-             end do
-             call send(pf, F, F%level*100+k, .false.)
-             call restrict_time_space_fas(pf, t0, dt, F, G)
-          end do
-
-          !! bottom
-          pf%state%cycle = pf%state%cycle + 1
-          F => pf%levels(pf%nlevels)
-
-          call recv(pf, F, F%level*100+k, .true.)
-          do j = 1, F%nsweeps
-             call sweep(pf, t0, dt, F)
-          end do
-          call send(pf, F, F%level*100+k, .true.)
-
-          !! go up the v-cycle
-          do l = pf%nlevels, 2, -1
-             pf%state%cycle = pf%state%cycle + 1
-             F => pf%levels(l-1)
-             G => pf%levels(l)
-
-             call interpolate_time_space(pf, t0, dt, F, G)
-
-             call recv(pf, F, F%level*100+k, .false.)
-
-             if (pf%rank > 0) then
-                ! XXX: correction...
-                ! XXX: using qSDC(1) for now but this is redundant (beginning of next sweep)
-                G%qSDC(:, 1) = G%q0
-                call interpolate(F%qSDC(:, 1), G%qSDC(:, 1), F%level, G%level)
-                F%q0 = F%qSDC(:, 1)
-             end if
-
-             if (l > 2) then
-                do j = 1, F%nsweeps
-                   call sweep(pf, t0, dt, F)
-                   call echo_error(pf, F, pf%state)
-                end do
-             end if
-          end do
-
-          F => pf%levels(1)
-          call echo_error(pf, F, pf%state)
+          call call_hooks(pf, l, PF_POST_SWEEP)
        end do
 
-       ! broadcast fine qend (non-pipelined time loop)
-       F%send = F%qend
+       fine => pf%levels(pf%nlevels); crse => pf%levels(pf%nlevels-1)
+       call interpolate_time_space(pf, pf%t0, dt, fine, crse, crse%Finterp)
+       fine%q0 = fine%Q(:,1)
 
-       F => pf%levels(1)
-       if (nblock > 1) &
-            call broadcast(pf, F%send, F%nvars, pf%comm%nproc-1)
-
-       F%q0 = F%send
-    end do
-
-    pf%state%iter = -1 
-
-    if (present(qend)) then
-       F => pf%levels(1)
-       qend = F%qend
     end if
-  end subroutine pfasst_run
+
+    call call_hooks(pf, -1, PF_POST_PREDICTOR)
+  end subroutine pf_predictor
+
+  !
+  ! Run in parallel using PFASST.
+  !
+  subroutine pf_pfasst_run(pf, q0, dt, tend, nsteps_in)
+    type(pf_pfasst), intent(inout)           :: pf
+    real(pfdp),      intent(in   )           :: q0(:), dt, tend
+    integer,         intent(in   ), optional :: nsteps_in
+
+    type(pf_level), pointer :: finest
+
+    integer :: nsteps, nblocks
+    integer :: n, k, b, l
+
+    if (present(nsteps_in)) then
+       nsteps = nsteps_in
+    else
+       nsteps = ceiling(1.0*tend/dt)
+    end if
+
+    nblocks = nsteps / pf%comm%nproc
+
+    pf%comm%statreq  = -66
+    pf%levels(pf%nlevels)%q0 = q0
+    pf%dt = dt
+
+    finest => pf%levels(pf%nlevels)
+
+    do b = 1, nblocks
+       pf%step = (b-1) * pf%comm%nproc + pf%rank
+       pf%t0   = pf%step * dt
+
+       ! XXX: get rid of dt here...
+       call pf_predictor(pf, dt)
+
+       do k = 1, pf%niters
+          pf%iter = k
+          do l = 2, pf%nlevels
+             call pf_post(pf, pf%levels(l), l*10000+pf%iter)
+          end do
+          call pf_v_cycle(pf, pf%nlevels)
+       end do
+
+       if (b < nblocks) then
+          call pf_mpi_wait(pf, finest%level)
+          finest%send = finest%qend
+          call pf_broadcast(pf, finest%send, finest%ndofs, pf%comm%nproc-1)
+          finest%q0 = finest%send
+       end if
+    end do
+  end subroutine pf_pfasst_run
+
+  !
+  ! Execute a V-cycle
+  !
+  recursive subroutine pf_v_cycle(pf, level)
+    type(pf_pfasst), intent(inout) :: pf
+    integer,         intent(in   ) :: level
+
+    if (level == 1) then
+       call pf_v_cycle_bottom(pf, level)
+    else
+       call pf_v_cycle_down(pf, level)
+       call pf_v_cycle(pf, level-1)
+       call pf_v_cycle_up(pf, level)
+    end if
+  end subroutine pf_v_cycle
+
+  recursive subroutine pf_v_cycle_bottom(pf, level)
+    type(pf_pfasst), intent(inout) :: pf
+    integer,         intent(in   ) :: level
+
+    type(pf_level), pointer :: crse
+    integer :: j
+
+    crse => pf%levels(level)
+    call pf_recv(pf, crse, crse%level*10000+pf%iter, .true.)
+    call call_hooks(pf, crse%level, PF_PRE_SWEEP)
+    do j = 1, crse%nsweeps
+       call sweep(pf, crse, pf%t0, pf%dt)
+    end do
+    call call_hooks(pf, crse%level, PF_POST_SWEEP)
+    call pf_send(pf, crse, crse%level*10000+pf%iter, .true.)
+  end subroutine pf_v_cycle_bottom
+
+  recursive subroutine pf_v_cycle_down(pf, level)
+    type(pf_pfasst), intent(inout) :: pf
+    integer,         intent(in   ) :: level
+
+    type(pf_level), pointer :: crse, fine
+    integer :: j
+
+    fine => pf%levels(level)
+    crse => pf%levels(level-1)
+
+    call call_hooks(pf, fine%level, PF_PRE_SWEEP)
+    do j = 1, fine%nsweeps
+       call sweep(pf, fine, pf%t0, pf%dt)
+    end do
+    ! call pf_residual(pf, fine, pf%dt)
+    call call_hooks(pf, fine%level, PF_POST_SWEEP)
+    call pf_send(pf, fine, fine%level*10000+pf%iter, .false.)
+    call restrict_time_space_fas(pf, pf%t0, pf%dt, fine, crse)
+    call save(crse)
+
+  end subroutine pf_v_cycle_down
+
+  recursive subroutine pf_v_cycle_up(pf, level)
+    type(pf_pfasst), intent(inout) :: pf
+    integer,         intent(in   ) :: level
+
+    type(pf_level), pointer :: crse, fine
+    integer :: j
+
+    fine => pf%levels(level)
+    crse => pf%levels(level-1)
+
+    call interpolate_time_space(pf, pf%t0, pf%dt, fine, crse, crse%Finterp)
+    call pf_recv(pf, fine, fine%level*10000+pf%iter, .false.)
+
+    if (pf%rank /= 0) then
+       call interpolate_q0(pf, fine, crse)
+    end if
+
+    if (fine%level < pf%nlevels) then
+       call call_hooks(pf, fine%level, PF_PRE_SWEEP)
+       do j = 1, fine%nsweeps
+          call sweep(pf, fine, pf%t0, pf%dt)
+       end do
+       ! call pf_residual(pf, F, dt)
+       call call_hooks(pf, fine%level, PF_POST_SWEEP)
+    end if
+
+  end subroutine pf_v_cycle_up
+
+  !
+  ! Communication helpers
+  !
+  subroutine pf_post(pf, level, tag)
+    type(pf_pfasst), intent(in   ) :: pf
+    type(pf_level),  intent(inout) :: level
+    integer,         intent(in   ) :: tag
+    if (pf%rank /= 0) then
+       call pf_mpi_post(pf, level, tag)
+    end if
+  end subroutine pf_post
+
+  subroutine pf_send(pf, level, tag, blocking)
+    type(pf_pfasst), intent(inout) :: pf
+    type(pf_level),  intent(inout) :: level
+    integer,         intent(in   ) :: tag
+    logical,         intent(in   ) :: blocking
+    if (pf%rank /= pf%comm%nproc-1) then
+       call pf_mpi_send(pf, level, tag, blocking)
+    end if
+  end subroutine pf_send
+
+  subroutine pf_recv(pf, level, tag, blocking)
+    type(pf_pfasst), intent(inout) :: pf
+    type(pf_level),  intent(inout) :: level
+    integer,         intent(in   ) :: tag
+    logical,         intent(in   ) :: blocking
+    if (pf%rank /= 0) then
+       call pf_mpi_recv(pf, level, tag, blocking)
+    end if
+  end subroutine pf_recv
+
+  subroutine pf_broadcast(pf, y, nvar, root)
+    type(pf_pfasst), intent(inout) :: pf
+    real(pfdp)  ,    intent(in   ) :: y(nvar)
+    integer,         intent(in   ) :: nvar, root
+    call pf_mpi_broadcast(pf, y, nvar, root)
+  end subroutine pf_broadcast
 
 end module pf_mod_parallel

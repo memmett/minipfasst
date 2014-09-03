@@ -1,171 +1,200 @@
 !
-! Copyright (c) 2012, Matthew Emmett and Michael Minion.
+! Copyright (C) 2014 Matthew Emmett and Michael Minion.
 !
-! Redistribution and use in source and binary forms, with or without
-! modification, are permitted provided that the following conditions are
-! met:
-! 
-!   1. Redistributions of source code must retain the above copyright
-!      notice, this list of conditions and the following disclaimer.
-! 
-!   2. Redistributions in binary form must reproduce the above copyright
-!      notice, this list of conditions and the following disclaimer in
-!      the documentation and/or other materials provided with the
-!      distribution.
-! 
-! THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
-! "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
-! LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
-! A PARTICULAR PURPOSE ARE DISCLAIMED.  IN NO EVENT SHALL THE COPYRIGHT
-! HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
-! SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
-! LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
-! DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
-! THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-! (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
-! OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-! 
 
 module pf_mod_pfasst
   use pf_mod_dtype
-
+  use sweeper
+  use user
   implicit none
-
-  interface create
-     module procedure pf_pfasst_create
-  end interface create
-
-  interface setup
-     module procedure pf_pfasst_setup
-  end interface setup
-
-  interface destroy
-     module procedure pf_pfasst_destroy
-  end interface destroy
-
 contains
 
+  !
   ! Create a PFASST object
   !
-  ! Passing the 'nvars' and 'nnodes' arrays is optional, but these
-  ! should be set appropriately before calling setup.
-  subroutine pf_pfasst_create(pf, pf_comm, nlevels, nvars, nnodes)
-    type(pf_pfasst_t), intent(inout)         :: pf
-    type(pf_comm_t),   intent(inout), target :: pf_comm
-    integer, intent(in)                      :: nlevels
-    integer, intent(in), optional            :: nvars(nlevels), nnodes(nlevels)
+  subroutine pf_pfasst_create(pf, comm, nlevels, fname, nocmd)
+    use pf_mod_hooks, only: PF_MAX_HOOK
+    use pf_mod_options
+    type(pf_pfasst),  intent(inout)           :: pf
+    type(pf_comm),    intent(inout), target   :: comm
+    integer,          intent(in   ), optional :: nlevels
+    character(len=*), intent(in   ), optional :: fname
+    logical,          intent(in   ), optional :: nocmd
 
+    logical :: read_cmd
     integer :: l
 
-    pf%comm => pf_comm
+    if (present(nlevels)) pf%nlevels = nlevels
 
-    pf%nlevels = nlevels
-    allocate(pf%levels(nlevels))
-    
-    if (present(nvars)) then
-       do l = 1, nlevels
-          pf%levels(l)%nvars = nvars(l)
-       end do
+    read_cmd = .true.
+    if (present(nocmd)) then
+         if (nocmd) read_cmd = .false.
+    end if
+    if (present(fname))  then
+       call pf_read_opts(pf, read_cmd, fname)
+    else
+       call pf_read_opts(pf, read_cmd)
     end if
 
-    if (present(nnodes)) then
-       do l = 1, nlevels
-          pf%levels(l)%nnodes = nnodes(l)
-       end do
-    end if
+    pf%comm => comm
+
+    allocate(pf%levels(pf%nlevels))
+    allocate(pf%hooks(pf%nlevels, PF_MAX_HOOK, PF_MAX_HOOKS))
+    allocate(pf%nhooks(pf%nlevels, PF_MAX_HOOK))
+    pf%nhooks = 0
   end subroutine pf_pfasst_create
 
-  ! Setup (allocate) PFASST object
-  subroutine pf_pfasst_setup(pf)
-    use pf_mod_quadrature
-    use pf_mod_sweep
+  !
+  ! Setup PFASST object
+  !
+  subroutine pf_pfasst_setup(pf, ndofs, nnodes)
     use pf_mod_utils
+    type(pf_pfasst), intent(inout) :: pf
+    integer,         intent(in   ) :: ndofs(:), nnodes(:)
 
-    type(pf_pfasst_t), intent(inout)        :: pf
-
-    integer :: l, nvars, nnodes
-    type(pf_level_t), pointer :: F, G
+    integer :: l
+    type(pf_level), pointer :: fine, crse
 
     if (pf%rank < 0) then
        stop 'invalid PF rank: did you call setup correctly?'
     end if
 
     do l = 1, pf%nlevels
-       F => pf%levels(l)
-
-       F%level = l
-       nvars   = F%nvars
-       nnodes  = F%nnodes
-
-       allocate(F%q0(nvars))
-       allocate(F%qend(nvars))
-       allocate(F%send(nvars))
-       allocate(F%recv(nvars))
-       allocate(F%qSDC(nvars,nnodes))
-       allocate(F%fSDC(nvars,nnodes,npieces))
-       allocate(F%nodes(nnodes))
-       allocate(F%qmat(nnodes-1,nnodes))
-
-       if (l > 1) then
-          allocate(F%tau(F%nvars, nnodes-1))
-       else
-          nullify(F%tau)
-       end if
-
-       call pf_quadrature(pf%qtype, nnodes, pf%levels(1)%nnodes, F%nodes, F%qmat)
-       call sdcinit(F)
-
-       F%allocated = .true.
+       pf%levels(l)%ndofs = ndofs(l)
+       pf%levels(l)%nnodes = nnodes(l)
+       pf%levels(l)%level = l
     end do
 
-    do l = 1, pf%nlevels-1
-       F => pf%levels(l)
-       G => pf%levels(l+1)
+    do l = 1, pf%nlevels
+       call pf_level_setup(pf, pf%levels(l))
+    end do
 
-       allocate(F%tmat(G%nnodes,F%nnodes-G%nnodes))
-       call pf_time_interpolation_matrix(F%nodes, F%nnodes, &
-            G%nodes, G%nnodes, F%tmat)
+    do l = pf%nlevels, 2, -1
+       fine => pf%levels(l)
+       crse => pf%levels(l-1)
+
+       allocate(fine%tmat(fine%nnodes,crse%nnodes))
+       allocate(fine%rmat(crse%nnodes,fine%nnodes))
+       call pf_time_interpolation_matrix(fine%nodes, fine%nnodes, crse%nodes, crse%nnodes, fine%tmat)
+       call pf_time_interpolation_matrix(crse%nodes, crse%nnodes, fine%nodes, fine%nnodes, fine%rmat)
     end do
   end subroutine pf_pfasst_setup
 
+  !
+  ! Setup (allocate) PFASST level
+  !
+  ! If the level is already setup, calling this again will allocate
+  ! (or deallocate) tau appropriately.
+  !
+  subroutine pf_level_setup(pf, lev)
+    use pf_mod_quadrature
+    type(pf_pfasst), intent(in   ) :: pf
+    type(pf_level),  intent(inout) :: lev
+
+    integer :: m, p, ndofs, nnodes
+
+    if (lev%ndofs <= 0)   stop "ERROR: Invalid nvars/dofs (pf_pfasst.f90)."
+    if (lev%nnodes <= 0)  stop "ERROR: Invalid nnodes (pf_pfasst.f90)."
+    if (lev%nsweeps <= 0) stop "ERROR: Invalid nsweeps (pf_pfasst.f90)."
+
+    ndofs  = lev%ndofs
+    nnodes = lev%nnodes
+
+    lev%residual = -1
+
+    if (lev%level < pf%nlevels) then
+       allocate(lev%tau(ndofs,nnodes-1))
+    end if
+
+    allocate(lev%q0(ndofs))
+    allocate(lev%send(ndofs))
+    allocate(lev%recv(ndofs))
+    allocate(lev%nodes(nnodes))
+    allocate(lev%nflags(nnodes))
+    allocate(lev%smat(nnodes-1,nnodes))
+    allocate(lev%qmat(nnodes-1,nnodes))
+    allocate(lev%qend(ndofs))
+    allocate(lev%Q(ndofs,nnodes))
+    allocate(lev%F(ndofs,nnodes,npieces))
+
+    if (lev%level < pf%nlevels) then
+       if (lev%Finterp) then
+          allocate(lev%pF(ndofs,nnodes,npieces))
+          allocate(lev%pQ(ndofs,nnodes))
+       else
+          allocate(lev%pQ(ndofs,nnodes))
+       end if
+    end if
+
+    if (btest(pf%qtype, 8)) then
+       call pf_quadrature(pf%qtype, nnodes, pf%levels(1)%nnodes, &
+            lev%nodes, lev%nflags, lev%smat, lev%qmat)
+    else
+       call pf_quadrature(pf%qtype, nnodes, pf%levels(pf%nlevels)%nnodes, &
+            lev%nodes, lev%nflags, lev%smat, lev%qmat)
+    end if
+
+    call sweeper_setup(lev)
+    call user_setup(lev)
+  end subroutine pf_level_setup
+
+  !
   ! Deallocate PFASST object
+  !
   subroutine pf_pfasst_destroy(pf)
-    use pf_mod_sweep, only: npieces
-    type(pf_pfasst_t), intent(inout) :: pf
+    type(pf_pfasst), intent(inout) :: pf
 
     integer :: l
-    type(pf_level_t), pointer :: level
 
     do l = 1, pf%nlevels
-       level => pf%levels(l)
-
-       if (level%allocated) then
-          deallocate(level%q0)
-          deallocate(level%qend)
-          deallocate(level%send)
-          deallocate(level%recv)
-          deallocate(level%nodes)
-          deallocate(level%qmat)
-
-          if (associated(level%smat)) then
-             deallocate(level%smat)
-          end if
-
-          deallocate(level%qSDC)
-          deallocate(level%fSDC)
-
-          if (l > 1) then
-             deallocate(level%tau)
-          end if
-
-          if (l < pf%nlevels) &
-               deallocate(level%tmat)
-
-          level%allocated = .false.
-       end if
+       call pf_level_destroy(pf%levels(l))
     end do
 
     deallocate(pf%levels)
+    deallocate(pf%hooks)
+    deallocate(pf%nhooks)
   end subroutine pf_pfasst_destroy
+
+
+  !
+  ! Deallocate PFASST level
+  !
+  subroutine pf_level_destroy(lev)
+    type(pf_level), intent(inout) :: lev
+
+    integer :: m, p
+
+    deallocate(lev%q0)
+    deallocate(lev%send)
+    deallocate(lev%recv)
+    deallocate(lev%nodes)
+    deallocate(lev%nflags)
+    deallocate(lev%qmat)
+    deallocate(lev%smat)
+    deallocate(lev%Q)
+    deallocate(lev%F)
+    if (allocated(lev%pQ)) then
+       if (lev%Finterp) then
+          deallocate(lev%pF)
+          deallocate(lev%pQ)
+       else
+          deallocate(lev%pQ)
+       end if
+    end if
+
+    deallocate(lev%qend)
+    if (allocated(lev%tau)) then
+       deallocate(lev%tau)
+    end if
+    if (allocated(lev%tmat)) then
+       deallocate(lev%tmat)
+    end if
+    if (allocated(lev%rmat)) then
+       deallocate(lev%rmat)
+    end if
+
+    call sweeper_destroy(lev)
+    call user_destroy(lev)
+  end subroutine pf_level_destroy
 
 end module pf_mod_pfasst

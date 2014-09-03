@@ -1,91 +1,106 @@
 !
-! Copyright (c) 2012, Matthew Emmett and Michael Minion.
+! Copyright (C) 2014 Matthew Emmett and Michael Minion.
 !
-! Redistribution and use in source and binary forms, with or without
-! modification, are permitted provided that the following conditions are
-! met:
-! 
-!   1. Redistributions of source code must retain the above copyright
-!      notice, this list of conditions and the following disclaimer.
-! 
-!   2. Redistributions in binary form must reproduce the above copyright
-!      notice, this list of conditions and the following disclaimer in
-!      the documentation and/or other materials provided with the
-!      distribution.
-! 
-! THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
-! "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
-! LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
-! A PARTICULAR PURPOSE ARE DISCLAIMED.  IN NO EVENT SHALL THE COPYRIGHT
-! HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
-! SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
-! LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
-! DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
-! THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-! (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
-! OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-! 
 
 module pf_mod_dtype
-  use iso_c_binding
+  use pf_mod_config
+  use sweeper_dtype
+  use user_dtype
   implicit none
 
+  integer, parameter :: PF_MAX_HOOKS = 32
 
-  ! state type
-  type :: pf_state_t
-     double precision :: t0, dt
-     integer          :: cycle, step, iter, nsteps
-  end type pf_state_t
+  real(pfdp), parameter :: ZERO  = 0.0_pfdp
+  real(pfdp), parameter :: ONE   = 1.0_pfdp
+  real(pfdp), parameter :: TWO   = 2.0_pfdp
+  real(pfdp), parameter :: HALF  = 0.5_pfdp
 
+  integer, parameter :: SDC_GAUSS_LOBATTO   = 1
+  integer, parameter :: SDC_GAUSS_RADAU     = 2
+  integer, parameter :: SDC_CLENSHAW_CURTIS = 3
+  integer, parameter :: SDC_UNIFORM         = 4
+  integer, parameter :: SDC_GAUSS_LEGENDRE  = 5
+  integer, parameter :: SDC_PROPER_NODES    = 2**8
+  integer, parameter :: SDC_COMPOSITE_NODES = 2**9
+  integer, parameter :: SDC_NO_LEFT         = 2**10
 
-  ! level type
-  type :: pf_level_t
-     integer     :: nvars = -1          ! number of variables (dofs)
+  type :: pf_hook
+     procedure(pf_hook_p), pointer, nopass :: proc
+  end type pf_hook
+
+  type :: pf_level
+     integer     :: ndofs = -1          ! number of degrees-of-freedom
      integer     :: nnodes = -1         ! number of sdc nodes
      integer     :: nsweeps = 1         ! number of sdc sweeps to perform
-     integer     :: level = -1          ! level number (1=finest)
+     integer     :: level = -1          ! level number (1 is the coarsest)
+     logical     :: Finterp = .false.   ! interpolate functions instead of solutions
 
-     ! arrays
-     double precision, pointer :: &
-          qSDC(:,:), &                  ! unknowns at sdc nodes
-          fSDC(:,:,:), &                ! imex functions values at sdc nodes
-          tau(:,:), &                   ! fas correction
+     real(pfdp)  :: residual
+
+     real(pfdp), allocatable :: &
+          Q(:,:), &                     ! unknowns at sdc nodes
+          pQ(:,:), &                    ! unknowns at sdc nodes, previous sweep
+          F(:,:,:), &                   ! function values at sdc nodes
+          pF(:,:,:), &                  ! function values at sdc nodes, previous sweep
           q0(:), &                      ! initial condition
-          qend(:), &                    ! end value
+          qend(:), &                    ! end solution
           send(:), &                    ! send buffer
           recv(:), &                    ! recv buffer
           nodes(:), &                   ! sdc nodes
-          qmat(:,:), &                  ! integration matrix
-          smat(:,:,:) => null(), &      ! sdc matrices (allocated by the sweeper)
-          tmat(:,:)                     ! time interpolation matrix
+          qmat(:,:), &                  ! integration matrix (0 to node)
+          smat(:,:), &                  ! integration matrix (node to node)
+          tmat(:,:), &                  ! time interpolation matrix
+          rmat(:,:), &                  ! time restriction matrix
+          tau(:,:)                      ! fas corrections
 
-     logical :: allocated = .false.
-  end type pf_level_t
+     integer, allocatable :: &
+          nflags(:)                     ! sdc node flags
 
+     type(pf_sweeper) :: sweeper
+     type(pf_user) :: user
+  end type pf_level
 
-  ! pfasst communicator
-  type :: pf_comm_t
+  type :: pf_comm
      integer :: nproc = -1              ! total number of processors
-
-     ! mpi
      integer :: comm = -1               ! communicator
-     integer, pointer :: &
+     integer, allocatable :: &
           recvreq(:), &                 ! receive requests (indexed by level)
           sendreq(:)                    ! send requests (indexed by level)
-  end type pf_comm_t
+     integer :: statreq                 ! status send request
+  end type pf_comm
 
-
-  ! pfasst type
-  type :: pf_pfasst_t
+  type :: pf_pfasst
      integer :: nlevels = -1            ! number of pfasst levels
      integer :: niters  = 5             ! number of iterations
-     integer :: qtype   = 1             ! type of quadrature nodes
+     integer :: qtype   = SDC_GAUSS_LOBATTO
      integer :: rank    = -1            ! rank of current processor
 
-     ! pf objects
-     type(pf_state_t)          :: state
-     type(pf_level_t), pointer :: levels(:)
-     type(pf_comm_t), pointer  :: comm
-  end type pf_pfasst_t
+     ! state
+     integer    :: step, iter
+     real(pfdp) :: t0, dt
+
+     type(pf_hook), allocatable :: hooks(:,:,:)
+     integer,       allocatable :: nhooks(:,:)
+
+     ! real(pfdp) :: abs_res_tol = 0.d0
+     ! real(pfdp) :: rel_res_tol = 0.d0
+
+     logical :: Pipeline_G =  .false.
+     logical :: PFASST_pred = .false.
+
+     integer     :: taui0 = -999999     ! cutoff for tau inclusion
+
+     type(pf_level), pointer :: levels(:)
+     type(pf_comm),  pointer :: comm
+  end type pf_pfasst
+
+  interface
+     subroutine pf_hook_p(pf, level)
+       use iso_c_binding
+       import pf_pfasst, pf_level
+       type(pf_pfasst), intent(inout) :: pf
+       type(pf_level),  intent(inout) :: level
+     end subroutine pf_hook_p
+  end interface
 
 end module pf_mod_dtype
