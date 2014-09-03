@@ -174,7 +174,7 @@ contains
     type(pf_level), pointer :: finest
 
     integer :: nsteps, nblocks
-    integer :: n, k, b
+    integer :: n, k, b, l
 
     if (present(nsteps_in)) then
        nsteps = nsteps_in
@@ -199,6 +199,9 @@ contains
 
        do k = 1, pf%niters
           pf%iter = k
+          do l = 2, pf%nlevels
+             call pf_post(pf, pf%levels(l), l*10000+pf%iter)
+          end do
           call pf_v_cycle(pf, pf%nlevels)
        end do
 
