@@ -5,8 +5,38 @@ MINIPFASST is a mini implementation of the Parallel Full Approximation
 Scheme in Space and Time (PFASST) algorithm.
 
 Currently a very simple 1d advection/diffusion example is included in
-MINIPFASST.  To run the example, modify the Makefile to your needs
-and:
+MINIPFASST.  To run the example, modify examples/advection/Makefile to
+your needs and:
 
+$ cd examples/advection
 $ make
-$ mpirun -n 4 pfasst-advdiff
+$ mpirun -n 4 ./main.exe
+
+
+Differences from LIBPFASST
+==========================
+
+MINIPFASST uses flat arrays to store solutions and function
+evaluations instead of "encapsulations".
+
+MINIPFASST defines transfer routines, SDC sweepers, and user data
+contexts etc AT COMPILE TIME.
+
+Please see:
+
+* sweeper_dtype.f90 - this defines `type(pf_sweeper)`
+
+* sweeper.f90 - this defines `sweeper_setup` and `sweeper_destroy`
+                routines that are called per level
+
+* user_dtype.f90 - this defines `type(pf_user)`
+
+* user.f90 - this defines `user_setup` and `user_destroy` routines
+             that are called per level
+
+* transfer.f90 - this defines `interpolate` and `restrict` routines
+
+Many routines (eg, sweep and transfer routines) get passed a
+`type(pf_level)` structure which contains both `type(pf_sweeper)` and
+`type(pf_user)` structures.  This provides a simple way of managing
+and passing level specific data to sweeper and user routines.
