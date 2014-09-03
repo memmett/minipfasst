@@ -6,8 +6,17 @@
 
 module feval
   use pf_mod_dtype
-  use user
+  use multigrid
   implicit none
+
+  real(pfdp), parameter :: &
+       v      = 1.0_pfdp, &        ! velocity
+       nu     = 0.02_pfdp, &       ! viscosity
+       t00    = 0.15_pfdp           ! initial time for exact solution
+
+  real(pfdp), parameter :: two_pi = 6.2831853071795862_pfdp
+  real(pfdp), parameter :: pi = 3.141592653589793_pfdp
+
 contains
 
   !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
@@ -60,17 +69,15 @@ contains
     type(pf_level), intent(in   ) :: lev
     real(pfdp),     intent(  out) :: f1(:)
 
-    complex(pfdp),   pointer :: wk(:)
+    integer :: nx
+    real(pfdp) :: dx, ybc(1-spatial_order:size(y)+spatial_order), y_x(size(y))
 
-    wk => lev%user%wk
+    nx = size(y)
+    dx = lx/dble(nx)
 
-    wk = y
-    call fftw_execute_dft(lev%user%ffft, wk, wk)
-    wk = -v * lev%user%ddx * wk / size(wk)
-    call fftw_execute_dft(lev%user%ifft, wk, wk)
-
-    f1 = real(wk)
-
+    call fill_bc(y, ybc, nx, spatial_order)
+    y_x = ( ybc(2:nx+1) - ybc(0:nx-1) ) / (2*dx)
+    f1 = -v * y_x
   end subroutine f1eval
 
   !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
@@ -81,16 +88,15 @@ contains
     type(pf_level), intent(in   ) :: lev
     real(pfdp),     intent(  out) :: f2(:)
 
-    complex(pfdp),   pointer :: wk(:)
+    integer :: nx
+    real(pfdp) :: dx, ybc(1-spatial_order:size(y)+spatial_order), lap(size(y))
 
-    wk => lev%user%wk
+    nx = size(y)
+    dx = lx/dble(nx)
 
-    wk = y
-    call fftw_execute_dft(lev%user%ffft, wk, wk)
-    wk = nu * lev%user%lap * wk / size(wk)
-    call fftw_execute_dft(lev%user%ifft, wk, wk)
-
-    f2 = real(wk)
+    call fill_bc(y, ybc, nx, spatial_order)
+    lap = ( ybc(0:nx-1) - 2*ybc(1:nx) + ybc(2:nx+1) ) / (dx*dx)
+    f2 = nu*lap
   end subroutine f2eval
 
   !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
@@ -102,16 +108,14 @@ contains
     real(pfdp),     intent(in   ) :: t, dt
     type(pf_level), intent(in   ) :: lev
 
-    complex(pfdp),   pointer :: wk(:)
+    real(pfdp) :: maxresidual
+    integer :: k
 
-    wk => lev%user%wk
+    do k = 1, 2
+       call multigrid_v_cycle(y, t, nu*dt, rhs, 1, maxresidual)
+       print *, k, maxresidual
+    end do
 
-    wk = rhs
-    call fftw_execute_dft(lev%user%ffft, wk, wk)
-    wk = wk / (1.0_pfdp - nu*dt*lev%user%lap) / size(wk)
-    call fftw_execute_dft(lev%user%ifft, wk, wk)
-
-    y  = real(wk)
     f2 = (y - rhs) / dt
   end subroutine f2comp
 

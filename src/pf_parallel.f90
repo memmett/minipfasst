@@ -157,7 +157,7 @@ contains
     type(pf_level), pointer :: finest
 
     integer :: nsteps, nblocks
-    integer :: n, k, b, l
+    integer :: k, b, l
 
     if (present(nsteps_in)) then
        nsteps = nsteps_in

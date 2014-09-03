@@ -10,10 +10,11 @@ module pf_mod_dtype
 
   integer, parameter :: PF_MAX_HOOKS = 32
 
-  real(pfdp), parameter :: ZERO  = 0.0_pfdp
-  real(pfdp), parameter :: ONE   = 1.0_pfdp
-  real(pfdp), parameter :: TWO   = 2.0_pfdp
-  real(pfdp), parameter :: HALF  = 0.5_pfdp
+  real(pfdp), parameter :: ZERO    = 0.0_pfdp
+  real(pfdp), parameter :: ONE     = 1.0_pfdp
+  real(pfdp), parameter :: TWO     = 2.0_pfdp
+  real(pfdp), parameter :: HALF    = 0.5_pfdp
+  real(pfdp), parameter :: QUARTER = 0.25_pfdp
 
   integer, parameter :: SDC_GAUSS_LOBATTO   = 1
   integer, parameter :: SDC_GAUSS_RADAU     = 2

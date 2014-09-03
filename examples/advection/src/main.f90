@@ -14,7 +14,7 @@ program main
 
   type(pf_pfasst) :: pf
   type(pf_comm)   :: comm
-  integer         :: err, ndofs(maxlevs), nnodes(maxlevs), l
+  integer         :: err, ndofs(maxlevs), nnodes(maxlevs)
   real(pfdp)      :: dt
 
   real(pfdp), allocatable :: q0(:)
@@ -32,10 +32,10 @@ program main
   !
 
   dt = 0.01_pfdp
-  ndofs  = [ 32, 64, 128 ]   ! number of dofs on the time/space levels
+  ndofs  = [ 128, 256, 512 ]   ! number of dofs on the time/space levels
   nnodes = [ 2, 3, 5 ]       ! number of sdc nodes on time/space levels
 
-  pf%qtype  = SDC_GAUSS_LOBATTO
+  pf%qtype  = SDC_UNIFORM + SDC_NO_LEFT
   pf%niters = 4
 
   call pf_mpi_create(comm, MPI_COMM_WORLD)
@@ -67,6 +67,5 @@ program main
   call pf_pfasst_destroy(pf)
   call pf_mpi_destroy(comm)
   call mpi_finalize(err)
-  call fftw_cleanup()
 
 end program main

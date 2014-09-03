@@ -22,7 +22,6 @@ contains
     logical,          intent(in   ), optional :: nocmd
 
     logical :: read_cmd
-    integer :: l
 
     if (present(nlevels)) pf%nlevels = nlevels
 
@@ -91,7 +90,7 @@ contains
     type(pf_pfasst), intent(in   ) :: pf
     type(pf_level),  intent(inout) :: lev
 
-    integer :: m, p, ndofs, nnodes
+    integer :: ndofs, nnodes
 
     if (lev%ndofs <= 0)   stop "ERROR: Invalid nvars/dofs (pf_pfasst.f90)."
     if (lev%nnodes <= 0)  stop "ERROR: Invalid nnodes (pf_pfasst.f90)."
@@ -161,8 +160,6 @@ contains
   !
   subroutine pf_level_destroy(lev)
     type(pf_level), intent(inout) :: lev
-
-    integer :: m, p
 
     deallocate(lev%q0)
     deallocate(lev%send)

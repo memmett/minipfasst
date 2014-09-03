@@ -66,8 +66,6 @@ contains
   subroutine save(lev)
     type(pf_level), intent(inout) :: lev
 
-    integer :: m, p
-
     if (lev%Finterp) then
        if (allocated(lev%pF)) then
           lev%pf = lev%f
