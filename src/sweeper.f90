@@ -37,8 +37,10 @@ contains
     ! compute integrals and add fas correction
     S = 0
     do m = 1, lev%nnodes-1
-       S(:,m) = S(:,m) + dt * lev%sweeper%expl_mat(m,n) * lev%F(:,n,1)
-       S(:,m) = S(:,m) + dt * lev%sweeper%impl_mat(m,n) * lev%F(:,n,2)
+       do n = 1, lev%nnodes
+          S(:,m) = S(:,m) + dt * lev%sweeper%expl_mat(m,n) * lev%F(:,n,1)
+          S(:,m) = S(:,m) + dt * lev%sweeper%impl_mat(m,n) * lev%F(:,n,2)
+       end do
     end do
 
     if (allocated(lev%tau)) then

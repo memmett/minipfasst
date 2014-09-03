@@ -58,12 +58,10 @@ program main
   allocate(q0(ndofs(maxlevs)))
   call initial(q0)
 
-  ! call pf_print_options(pf, show_mats=.true.)
+  call pf_print_options(pf, show_mats=.true.)
 
-  ! call pf_add_hook(pf, pf%nlevels, PF_POST_ITERATION, echo_error)
   call pf_add_hook(pf, -1, PF_POST_SWEEP, echo_error)
-  ! call pf_add_hook(pf, -1, PF_POST_SWEEP, echo_residual)
-  call pf_pfasst_run(pf, q0, dt, 0.0d0, nsteps=4)
+  call pf_pfasst_run(pf, q0, dt, 0.0d0, nsteps_in=4)
 
   !
   ! cleanup

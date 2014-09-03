@@ -97,8 +97,8 @@ module pf_mod_dtype
      integer :: rank    = -1            ! rank of current processor
 
      ! state
-     integer    :: iter
-     real(pfdp) :: t0
+     integer    :: step, iter
+     real(pfdp) :: t0, dt
 
      type(pf_hook), allocatable :: hooks(:,:,:)
      integer,       allocatable :: nhooks(:,:)
