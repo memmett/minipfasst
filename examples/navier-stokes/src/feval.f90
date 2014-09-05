@@ -17,7 +17,8 @@ contains
     real(pfdp), intent(  out) :: q0(:)
     real(pfdp), intent(in   ) :: nu
     integer,    intent(in   ) :: nx
-    call shapiro(q0, 0.d0, nx, nu)
+    ! call shapiro(q0, 0.d0, nx, nu)
+    call taylor_green(q0, 0.d0, nx, nu)
   end subroutine initial
 
   ! Compute exact solution
@@ -60,13 +61,46 @@ contains
     call pack3(yex, u, v, w)
   end subroutine shapiro
 
-  ! Evaluate the implicit function at y, t.
-  subroutine impl_eval(y, t, lev, f)
-    real(pfdp),     intent(in   ) :: y(:), t
-    type(pf_level), intent(in   ) :: lev
-    real(pfdp),     intent(  out) :: f(:)
+  subroutine taylor_green(yex, t, nx, nu)
+    use probin, only: npts
+    real(pfdp), intent(in   ) :: t, nu
+    real(pfdp), intent(  out) :: yex(:)
+    integer,    intent(in   ) :: nx
 
-  end subroutine impl_eval
+    integer    :: i, j, k
+    real(pfdp) :: ucoeff, vcoeff, wcoeff, theta, cosx, sinx, cosy, siny, cosz, sinz
+
+    complex(pfdp), dimension(nx,nx,nx) :: u, v, w
+    real(pfdp), dimension(nx)          :: x
+
+    do i = -nx/2, nx/2-1
+       x(nx/2+i+1)= 2*pi*dble(i)/nx
+    end do
+
+    theta  = 0.d0
+    ucoeff = 2.d0/sqrt(3.d0) * sin(theta + 2*pi/3)
+    vcoeff = 2.d0/sqrt(3.d0) * sin(theta - 2*pi/3)
+    wcoeff = 2.d0/sqrt(3.d0) * sin(theta)
+
+    do k = 1, nx
+       cosz = cos(x(k))
+       sinz = sin(x(k))
+       do j = 1, nx
+          cosy = cos(x(j))
+          siny = sin(x(j))
+          do i = 1, nx
+             cosx = cos(x(i))
+             sinx = sin(x(i))
+
+             u(i,j,k) = ucoeff * sinx * cosy * cosz
+             v(i,j,k) = vcoeff * cosx * siny * cosz
+             w(i,j,k) = wcoeff * cosx * cosy * sinz
+          end do
+       end do
+    end do
+
+    call pack3(yex, u, v, w)
+  end subroutine taylor_green
 
   subroutine fft3(plan, wk, scale, u, v, w, uhat, vhat, what)
     integer(8),    intent(in   )                   :: plan
@@ -78,7 +112,139 @@ contains
     wk = w * scale; call dfftw_execute_dft_(plan, wk, what)
   end subroutine fft3
 
-  ! Solve...
+  ! Evaluate F(U).
+  subroutine impl_eval(y, t, lev, f)
+    real(pfdp),     intent(in   ) :: y(:), t
+    type(pf_level), intent(inout) :: lev
+    real(pfdp),     intent(  out) :: f(:)
+
+    integer :: i, j, k, nx, ny, nz
+
+    complex(pfdp), dimension(lev%user%nx,lev%user%ny,lev%user%nz) :: &
+         u, v, w, uhat, vhat, what, utmp, vtmp, wtmp, &
+         ux, uy, uz, vx, vy, vz, wx, wy, wz, nluhat, nlvhat, nlwhat, phat
+
+    complex(pfdp) :: kx(lev%user%nx), ky(lev%user%ny), kz(lev%user%nz), diffop
+
+    real(pfdp) :: nu, scale
+
+    ! shortcuts
+    nx = lev%user%nx; ny = lev%user%ny; nz = lev%user%nz
+    kx = lev%user%kx; ky = lev%user%ky; kz = lev%user%kz
+    nu = lev%user%nu; scale = lev%user%scale
+
+    ! unpack and transform
+    call unpack3(y, u, v, w)
+    call fft3(lev%user%fft, lev%user%wk, scale, u, v, w, uhat, vhat, what)
+
+    ! gradients
+    do k=1,nz ; do j=1,ny ; do i=1,nx
+       utmp(i,j,k) = uhat(i,j,k) * kx(i)
+       vtmp(i,j,k) = uhat(i,j,k) * ky(j)
+       wtmp(i,j,k) = uhat(i,j,k) * kz(k)
+    end do; end do ; end do
+    call fft3(lev%user%bft, lev%user%wk, 1.d0, utmp, vtmp, wtmp, ux, uy, uz)
+
+    do k=1,nz ; do j=1,ny ; do i=1,nx
+       utmp(i,j,k) = vhat(i,j,k) * kx(i)
+       vtmp(i,j,k) = vhat(i,j,k) * ky(j)
+       wtmp(i,j,k) = vhat(i,j,k) * kz(k)
+    end do; end do ; end do
+    call fft3(lev%user%bft, lev%user%wk, 1.d0, utmp, vtmp, wtmp, vx, vy, vz)
+
+    do k=1,nz ; do j=1,ny ; do i=1,nx
+       utmp(i,j,k) = what(i,j,k) * kx(i)
+       vtmp(i,j,k) = what(i,j,k) * ky(j)
+       wtmp(i,j,k) = what(i,j,k) * kz(k)
+    end do; end do ; end do
+    call fft3(lev%user%bft, lev%user%wk, 1.d0, utmp, vtmp, wtmp, wx, wy, wz)
+
+    ! nonlinear terms
+    utmp = u * ux + v * uy + w * uz
+    vtmp = u * vx + v * vy + w * vz
+    wtmp = u * wx + v * wy + w * wz
+    call fft3(lev%user%fft, lev%user%wk, scale, utmp, vtmp, wtmp, nluhat, nlvhat, nlwhat)
+
+    ! pressure
+    do k=1,nz
+       do j=1,ny
+          do i=1,nx
+             phat(i,j,k) = -1.0d0 * ( &
+                  + kx(i)*nluhat(i,j,k) &
+                  + ky(j)*nlvhat(i,j,k) &
+                  + kz(k)*nlwhat(i,j,k) ) &
+                  / (kx(i)*kx(i) + ky(j)*ky(j) + kz(k)*kz(k) + 0.1d0**13)
+          end do
+       end do
+    end do
+
+    ! evaluate
+    do k=1,nz
+       do j=1,ny
+          do i=1,nx
+             diffop = nu * ( kx(i)*kx(i) + ky(j)*ky(j) + kz(k)*kz(k) )
+             uhat(i,j,k) = - nluhat(i,j,k) - kx(i)*phat(i,j,k) + diffop * uhat(i,j,k)
+             vhat(i,j,k) = - nlvhat(i,j,k) - ky(j)*phat(i,j,k) + diffop * vhat(i,j,k)
+             what(i,j,k) = - nlwhat(i,j,k) - kz(k)*phat(i,j,k) + diffop * what(i,j,k)
+          end do
+       end do
+    end do
+
+    call fft3(lev%user%bft, lev%user%wk, 1.d0, uhat, vhat, what, u, v, w)
+
+    call pack3(f, u, v, w)
+  end subroutine impl_eval
+
+  ! Evaluate F(U).
+  subroutine vorticity(y, lev, vort)
+    real(pfdp),     intent(in   ) :: y(:)
+    type(pf_level), intent(inout) :: lev
+    real(pfdp),     intent(  out) :: vort(:,:,:)
+
+    integer :: i, j, k, nx, ny, nz
+
+    complex(pfdp), dimension(lev%user%nx,lev%user%ny,lev%user%nz) :: &
+         u, v, w, uhat, vhat, what, utmp, vtmp, wtmp, ux, uy, uz, vx, vy, vz, wx, wy, wz
+
+    complex(pfdp) :: kx(lev%user%nx), ky(lev%user%ny), kz(lev%user%nz)
+    real(pfdp)    :: nu, scale
+
+    ! shortcuts
+    nx = lev%user%nx; ny = lev%user%ny; nz = lev%user%nz
+    kx = lev%user%kx; ky = lev%user%ky; kz = lev%user%kz
+    nu = lev%user%nu; scale = lev%user%scale
+
+    ! unpack and transform
+    call unpack3(y, u, v, w)
+    call fft3(lev%user%fft, lev%user%wk, scale, u, v, w, uhat, vhat, what)
+
+    ! gradients
+    do k=1,nz ; do j=1,ny ; do i=1,nx
+       utmp(i,j,k) = uhat(i,j,k) * kx(i)
+       vtmp(i,j,k) = uhat(i,j,k) * ky(j)
+       wtmp(i,j,k) = uhat(i,j,k) * kz(k)
+    end do; end do ; end do
+    call fft3(lev%user%bft, lev%user%wk, 1.d0, utmp, vtmp, wtmp, ux, uy, uz)
+
+    do k=1,nz ; do j=1,ny ; do i=1,nx
+       utmp(i,j,k) = vhat(i,j,k) * kx(i)
+       vtmp(i,j,k) = vhat(i,j,k) * ky(j)
+       wtmp(i,j,k) = vhat(i,j,k) * kz(k)
+    end do; end do ; end do
+    call fft3(lev%user%bft, lev%user%wk, 1.d0, utmp, vtmp, wtmp, vx, vy, vz)
+
+    do k=1,nz ; do j=1,ny ; do i=1,nx
+       utmp(i,j,k) = what(i,j,k) * kx(i)
+       vtmp(i,j,k) = what(i,j,k) * ky(j)
+       wtmp(i,j,k) = what(i,j,k) * kz(k)
+    end do; end do ; end do
+    call fft3(lev%user%bft, lev%user%wk, 1.d0, utmp, vtmp, wtmp, wx, wy, wz)
+
+    vort = realpart((wy-vz)**2 + (uz-wx)**2 + (vx-uy)**2)
+  end subroutine vorticity
+
+
+  ! Solve U + a F(U) = RHS.
   subroutine impl_solve(y, t, a, rhs, lev)
     real(pfdp),     intent(inout) :: y(:)
     real(pfdp),     intent(in   ) :: rhs(:)

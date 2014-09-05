@@ -13,13 +13,13 @@ contains
     real(pfdp),     intent(in   ) :: t, qG(:)
     real(pfdp),     intent(  out) :: qF(:)
     type(pf_level), intent(in   ) :: fine, crse
-    stop
+    stop 'INTERPOLATE'
   end subroutine interpolate
 
   subroutine restrict(qF, qG, fine, crse, t)
     real(pfdp),     intent(in   ) :: t, qF(:)
     real(pfdp),     intent(  out) :: qG(:)
     type(pf_level), intent(in   ) :: fine, crse
-    stop
+    stop 'RESTRICT'
   end subroutine restrict
 end module transfer

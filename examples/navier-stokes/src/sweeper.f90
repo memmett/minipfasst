@@ -36,28 +36,25 @@ contains
     ! do the time-stepping
     lev%Q(:,1) = lev%q0
 
-    ! t = t0
-    ! dtsdc = dt * (lev%nodes(2:lev%nnodes) - lev%nodes(1:lev%nnodes-1))
-    ! do m = 1, lev%nnodes-1
-    !    t = t + dtsdc(m)
-
-    !    rhs = lev%Q(:,m) + dtsdc(m) * lev%F(:,m,1) + S(:,m)
-
-    !    call f2comp(lev%Q(:,m+1), t, dtsdc(m), rhs, lev, lev%F(:,m+1,2))
-    !    call f1eval(lev%Q(:,m+1), t, lev, lev%F(:,m+1,1))
-    ! end do
+    t = t0
+    dtsdc = dt * (lev%nodes(2:lev%nnodes) - lev%nodes(1:lev%nnodes-1))
+    do m = 1, lev%nnodes-1
+       t = t + dtsdc(m)
+       rhs = lev%Q(:,m) + S(:,m)
+       call impl_solve(lev%Q(:,m+1), t, -dtsdc(m), rhs, lev)
+       lev%F(:,m+1,1) = -(rhs - lev%Q(:,m+1)) / dtsdc(m)
+    end do
 
     lev%qend = lev%Q(:,lev%nnodes)
   end subroutine sweep
 
   ! Evaluate function values
   subroutine evaluate(lev, t, m)
-    real(pfdp),       intent(in   ) :: t
-    integer,          intent(in   ) :: m
+    real(pfdp),     intent(in   ) :: t
+    integer,        intent(in   ) :: m
     type(pf_level), intent(inout) :: lev
 
-    ! call f1eval(lev%Q(:,m), t, lev, lev%F(:,m,1))
-    ! call f2eval(lev%Q(:,m), t, lev, lev%F(:,m,2))
+    call impl_eval(lev%Q(:,m), t, lev, lev%F(:,m,1))
   end subroutine evaluate
 
   ! Compute SDC integral

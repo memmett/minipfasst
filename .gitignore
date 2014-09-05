@@ -1,3 +1,4 @@
 *~
 build
 fftw3
+*.d/

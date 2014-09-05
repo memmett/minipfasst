@@ -48,6 +48,10 @@ contains
 
     integer :: m, p
 
+    if (size(lev%q(:,1)) /= size(lev%q0)) then
+       stop "ERROR: Size mismatch in initial condition (spreadq0, pf_utils.f90)."
+    end if
+
     lev%q(:,1) = lev%q0
     call evaluate(lev, t0, 1)
 
