@@ -38,7 +38,7 @@ contains
 
   subroutine dump_vorticity(fname, q, lev)
     use probin, only: output
-    use feval
+    use initial
     character(*),   intent(in   ) :: fname
     type(pf_level), intent(inout) :: lev
     real(pfdp),     intent(in   ) :: q(:)
@@ -51,7 +51,7 @@ contains
 
   subroutine echo_error(pf, level)
     use probin, only: npts, nu
-    use feval, only: shapiro
+    use initial, only: shapiro
     type(pf_pfasst), intent(inout) :: pf
     type(pf_level),  intent(inout) :: level
 

@@ -5,7 +5,7 @@
 program main
   use pfasst
   use probin
-  use feval, only: initial
+  use initial
   implicit none
 
   real(pfdp), allocatable :: q0(:)
@@ -25,7 +25,7 @@ program main
        stop "ERROR: Can't initialize MPI."
 
   allocate(q0(ndofs(maxlevs)))
-  call initial(q0, npts(maxlevs), nu)
+  call initialcondition(q0, npts(maxlevs), nu)
   ! allocate(q0(ndofs(1)))
   ! call initial(q0, npts(1), nu)
   if (midpoint) then
