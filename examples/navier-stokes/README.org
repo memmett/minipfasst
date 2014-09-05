@@ -1,0 +1,69 @@
+#+TITLE: Incompressible Navier-Stokes
+
+* Governing equations
+
+This example solves the incompressible Navier-Stokes equations in a 3d
+periodic unit box ([0,1]x[0,1]x[0,1]).  The governing equations are
+
+  u_t + u·∇u = -∇p + μ ∇²u    subject to    ∇·u = 0.
+
+In a 3d periodic domain, the pressure can be written as
+
+  p = -Δ⁻¹( ∇·(u·∇u) )
+
+and hence the governing equations become
+
+  u_t = -u·∇u - ∇ ( -Δ⁻¹( ∇·(u·∇u) ) ) + μ ∇²u
+
+for which the incompressiblity constraint is satisfied.
+
+* Spatial discretization
+
+The solver uses a pseudo-spectral spatial discretization.  Fourier
+transforms are performed using the FFTW library.
+
+The solver routines are meant to be as readable as possible, and
+minimal effort has gone into making efficient use of the FFTW library.
+
+Time stepping is done implicitly.
+
+* Implicit solver
+
+The implicit solver `impl_solve` in `feval.f90` uses a fixed point
+iteration to solve
+
+  U + a F(U) = RHS
+
+for U, where F(U) = -U·∇U - ∇ ( -Δ⁻¹( ∇·(U·∇U) ) ) + μ ∇²U.  With this
+kind of solver available a simple backward-Euler time-stepping given
+by
+
+  U(n+1) = U(n) + dt F[ U(n+1) ]
+
+is trivial to implement with RHS=U(n) and a=-dt.  The implicit
+midpoint rule given by
+
+  U(n+1) = U(n) + dt F[ U(n)/2 + U(n+1)/2 ]
+
+can be solved with the substitution U ← U(n)/2 + U(n+1)/2, RHS=U(n),
+and a=-dt/2.
+
+** Fixed point iteration
+
+The fixed point iteration used to solve U + a F(U) = RHS proceeds as
+follows:
+
+1. Compute the non-linear and pressure terms using iteration k and
+   move them to the RHS to obtain
+
+     U(k+1) + a μ ∇²U(k+1) = RHS + a NL(k) + a ∇ ( -Δ⁻¹( ∇·NL(k) ) )
+
+   where NL(k) = U(k)·∇U(k).
+
+2. In Fourier space, the ∇² operator is easy to invert, and hence
+
+     U(k+1) = (1 + a μ ∇²)⁻¹ [ RHS + a NL(k) + a ∇ p(k) ]
+
+   where p(k) = -Δ⁻¹( ∇·NL(k) )
+
+3. Iterate until |U(k+1) - U(k)| < tolerance.
