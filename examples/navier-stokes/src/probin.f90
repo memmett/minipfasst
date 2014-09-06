@@ -3,7 +3,7 @@ module probin
 
   integer, parameter :: maxlevs = 3
 
-  integer, save           :: nlevs, nsteps, niters, nskip
+  integer, save           :: nlevs, nsteps, niters, nskip, nthreads
   integer, save           :: npts(maxlevs), ndofs(maxlevs), nnodes(maxlevs)
   double precision, save  :: nu, dt
   character(len=64), save :: input, output
@@ -16,7 +16,7 @@ contains
 
     integer :: un
 
-    namelist /prbin/ input, output, nu, dt, nlevs, npts, nsteps, niters, nnodes, nskip, midpoint
+    namelist /prbin/ input, output, nu, dt, nlevs, npts, nsteps, niters, nnodes, nthreads, nskip, midpoint
 
     !
     ! defaults
@@ -28,6 +28,7 @@ contains
     niters  = 8
     nsteps  = -1
     nskip   = 1
+    nthreads = 1
 
     nu      = 7.6d-4
     dt      = 0.0001d0

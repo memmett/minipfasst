@@ -12,7 +12,7 @@ include $(MINIPFASST)/Makefile.defaults
 FSRC    += src/main.f90 src/feval.f90 src/hooks.f90 src/probin.f90 src/initial.f90
 CSRC    += src/dump.c
 FFLAGS  += -Wall -Wno-unused-dummy-argument -g -I$(FFTW)/include
-LDFLAGS += -g -L$(FFTW)/lib -lfftw3
+LDFLAGS += -g -L$(FFTW)/lib -lfftw3_threads -lfftw3
 
 #FFLAGS  += -O3 -g -I$(FFTW)/include
 #LDFLAGS += -L$(FFTW)/lib -lfftw3

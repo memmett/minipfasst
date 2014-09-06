@@ -20,6 +20,9 @@ program main
   end if
   call probin_init(probin_fname)
 
+  call dfftw_init_threads(err)
+  call dfftw_plan_with_nthreads(nthreads)
+
   call mpi_init(err)
   if (err .ne. 0) &
        stop "ERROR: Can't initialize MPI."
