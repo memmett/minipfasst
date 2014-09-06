@@ -9,15 +9,14 @@
 !
 
 module sdc_mod_quadrature
-  use iso_c_binding
   use sdc_mod_poly
   use pf_mod_dtype
   implicit none
 contains
 
   logical function not_proper(flags, node)
-    integer(c_int), intent(in) :: flags(:)
-    integer,        intent(in) :: node
+    integer, intent(in   ) :: flags(:)
+    integer, intent(in   ) :: node
 
     not_proper = .not. btest(flags(node), 0)
   end function not_proper
@@ -26,17 +25,17 @@ contains
   !
   ! Compute high precision quadrature nodes.
   !
-  subroutine sdc_qnodes(qnodes, flags, qtype, nnodes) bind(c)
-    integer(c_int),       intent(in), value  :: nnodes
-    integer(c_int),       intent(in), value  :: qtype
-    real(c_long_double),  intent(out)        :: qnodes(nnodes)
-    integer(c_int),       intent(out)        :: flags(nnodes)
+  subroutine sdc_qnodes(qnodes, flags, qtype, nnodes)
+    integer,    intent(in   ) :: nnodes
+    integer,    intent(in   ) :: qtype
+    real(pfqp), intent(  out) :: qnodes(nnodes)
+    integer,    intent(  out) :: flags(nnodes)
 
     integer :: j, degree
-    real(qp), allocatable :: roots(:)
-    real(qp), allocatable :: coeffs(:), coeffs2(:)
+    real(pfqp), allocatable :: roots(:)
+    real(pfqp), allocatable :: coeffs(:), coeffs2(:)
 
-    real(qp), parameter :: pi = 3.141592653589793115997963468544185161590576171875_qp
+    real(pfqp), parameter :: pi = 3.141592653589793115997963468544185161590576171875_pfqp
 
     flags = 0
 
@@ -51,9 +50,9 @@ contains
        call poly_legendre(coeffs, degree)
        call poly_roots(roots, coeffs, degree)
 
-       qnodes(1)          = 0.0_qp
-       qnodes(2:nnodes-1) = 0.5_qp * (1.0_qp + roots)
-       qnodes(nnodes)     = 1.0_qp
+       qnodes(1)          = 0.0_pfqp
+       qnodes(2:nnodes-1) = 0.5_pfqp * (1.0_pfqp + roots)
+       qnodes(nnodes)     = 1.0_pfqp
 
        deallocate(coeffs)
        deallocate(roots)
@@ -72,9 +71,9 @@ contains
        call poly_diff(coeffs, degree)
        call poly_roots(roots, coeffs(:degree), degree-1)
 
-       qnodes(1)          = 0.0_qp
-       qnodes(2:nnodes-1) = 0.5_qp * (1.0_qp + roots)
-       qnodes(nnodes)     = 1.0_qp
+       qnodes(1)          = 0.0_pfqp
+       qnodes(2:nnodes-1) = 0.5_pfqp * (1.0_pfqp + roots)
+       qnodes(nnodes)     = 1.0_pfqp
 
        deallocate(coeffs)
        deallocate(roots)
@@ -95,11 +94,11 @@ contains
        coeffs(:degree) = coeffs(:degree) + coeffs2
        call poly_roots(roots, coeffs, degree)
 
-       qnodes(1)      = 0.0_qp
+       qnodes(1)      = 0.0_pfqp
        do j = 2, nnodes-1
-          qnodes(j) = 0.5_qp * (1.0_qp - roots(nnodes+1-j))
+          qnodes(j) = 0.5_pfqp * (1.0_pfqp - roots(nnodes+1-j))
        end do
-       qnodes(nnodes) = 1.0_qp
+       qnodes(nnodes) = 1.0_pfqp
 
        deallocate(coeffs2)
        deallocate(coeffs)
@@ -112,7 +111,7 @@ contains
     case (SDC_CLENSHAW_CURTIS)
 
        do j = 0, nnodes-1
-          qnodes(j+1) = 0.5_qp * (1.0_qp - cos(j * pi / (nnodes-1)))
+          qnodes(j+1) = 0.5_pfqp * (1.0_pfqp - cos(j * pi / (nnodes-1)))
        end do
 
        do j = 1, nnodes
@@ -122,7 +121,7 @@ contains
     case (SDC_UNIFORM)
 
        do j = 0, nnodes-1
-          qnodes(j+1) = j * (1.0_qp / (nnodes-1))
+          qnodes(j+1) = j * (1.0_pfqp / (nnodes-1))
        end do
 
        do j = 1, nnodes
@@ -141,17 +140,17 @@ contains
   !
   ! Compute SDC Q and S matrices given source and destination nodes.
   !
-  subroutine sdc_qmats(qmat, smat, dst, src, flags, ndst, nsrc) bind(c)
-    integer(c_int),      intent(in), value  :: ndst, nsrc
-    real(c_long_double), intent(in)  :: dst(ndst), src(nsrc)
-    real(c_double),      intent(out) :: qmat(ndst-1, nsrc), smat(ndst-1, nsrc)
-    integer(c_int),      intent(in)  :: flags(nsrc)
+  subroutine sdc_qmats(qmat, smat, dst, src, flags, ndst, nsrc)
+    integer,    intent(in   ) :: ndst, nsrc
+    real(pfqp), intent(in   ) :: dst(ndst), src(nsrc)
+    real(pfdp), intent(  out) :: qmat(ndst-1, nsrc), smat(ndst-1, nsrc)
+    integer,    intent(in   ) :: flags(nsrc)
 
     integer  :: i, j, m
-    real(qp) :: q, s, den, p(0:nsrc)
+    real(pfqp) :: q, s, den, p(0:nsrc)
 
-    qmat = 0.0_dp
-    smat = 0.0_dp
+    qmat = 0.0_pfdp
+    smat = 0.0_pfdp
 
     ! construct qmat and smat
     do i = 1, nsrc
@@ -159,8 +158,8 @@ contains
        if (not_proper(flags, i)) cycle
 
        ! construct interpolating polynomial coefficients
-       p    = 0.0_qp
-       p(0) = 1.0_qp
+       p    = 0.0_pfqp
+       p(0) = 1.0_pfqp
        do m = 1, nsrc
           if (not_proper(flags, m) .or. m == i) cycle
           p = eoshift(p, -1) - src(m) * p
@@ -172,11 +171,11 @@ contains
 
        ! evaluate integrals
        do j = 2, ndst
-          q = poly_eval(p, nsrc, dst(j)) - poly_eval(p, nsrc,   0.0_qp)
+          q = poly_eval(p, nsrc, dst(j)) - poly_eval(p, nsrc,   0.0_pfqp)
           s = poly_eval(p, nsrc, dst(j)) - poly_eval(p, nsrc, dst(j-1))
 
-          qmat(j-1,i) = real(q / den, dp)
-          smat(j-1,i) = real(s / den, dp)
+          qmat(j-1,i) = real(q / den, pfdp)
+          smat(j-1,i) = real(s / den, pfdp)
        end do
     end do
 

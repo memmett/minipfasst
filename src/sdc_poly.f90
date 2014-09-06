@@ -15,11 +15,8 @@
 !
 
 module sdc_mod_poly
-  use iso_c_binding
+  use pf_mod_config
   implicit none
-
-  integer,  parameter :: qp = c_long_double
-  integer,  parameter :: dp = c_double
 
   private :: qsort_partition
 
@@ -33,9 +30,9 @@ contains
   !
   ! Evaluate polynomial.
   !
-  real(qp) function poly_eval(p, n, x) result(v) bind(c)
-    integer(c_int), intent(in), value :: n
-    real(qp),       intent(in)        :: p(0:n), x
+  real(pfqp) function poly_eval(p, n, x) result(v)
+    integer,    intent(in   ) :: n
+    real(pfqp), intent(in   ) :: p(0:n), x
 
     integer :: j
 
@@ -45,10 +42,10 @@ contains
     end do
   end function
 
-  complex(qp) function poly_eval_complex(p, n, x) result(v)
-    integer(c_int), intent(in), value :: n
-    real(qp),       intent(in)        :: p(0:n)
-    complex(qp),    intent(in)        :: x
+  complex(pfqp) function poly_eval_complex(p, n, x) result(v)
+    integer,       intent(in   ) :: n
+    real(pfqp),    intent(in   ) :: p(0:n)
+    complex(pfqp), intent(in   ) :: x
 
     integer :: j
 
@@ -62,14 +59,14 @@ contains
   !
   ! Differentiate polynomial (in place)
   !
-  subroutine poly_diff(p, n) bind(c)
-    integer(c_int), intent(in),   value :: n
-    real(qp),       intent(inout) :: p(0:n)
+  subroutine poly_diff(p, n)
+    integer,    intent(in   ) :: n
+    real(pfqp), intent(inout) :: p(0:n)
 
     integer  :: j
-    real(qp) :: pp(0:n)
+    real(pfqp) :: pp(0:n)
 
-    pp = 0.0_qp
+    pp = 0.0_pfqp
 
     do j = 1, n
        pp(j-1) = j * p(j)
@@ -82,14 +79,14 @@ contains
   !
   ! Integrate polynomial (in place)
   !
-  subroutine poly_int(p, n) bind(c)
-    integer(c_int), intent(in),   value :: n
-    real(qp),       intent(inout) :: p(0:n)
+  subroutine poly_int(p, n)
+    integer,    intent(in   ) :: n
+    real(pfqp), intent(inout) :: p(0:n)
 
     integer  :: j
-    real(qp) :: pp(0:n)
+    real(pfqp) :: pp(0:n)
 
-    pp = 0.0_qp
+    pp = 0.0_pfqp
 
     do j = 0, n-1
        pp(j+1) = p(j) / (j+1)
@@ -103,27 +100,27 @@ contains
   ! Compute Legendre polynomial coefficients using Bonnet's recursion
   ! formula.
   !
-  subroutine poly_legendre(p, n) bind(c)
-    integer(c_int), intent(in), value :: n
-    real(qp),       intent(out)       :: p(0:n)
+  subroutine poly_legendre(p, n)
+    integer,    intent(in   ) :: n
+    real(pfqp), intent(  out) :: p(0:n)
 
-    real(qp), dimension(0:n) :: p0, p1, p2
+    real(pfqp), dimension(0:n) :: p0, p1, p2
     integer :: j, m
 
     if (n == 0) then
-       p = [ 1.0_qp ]
+       p = [ 1.0_pfqp ]
        return
     end if
 
     if (n == 1) then
-       p = [ 0.0_qp, 1.0_qp ]
+       p = [ 0.0_pfqp, 1.0_pfqp ]
        return
     end if
 
-    p0 = 0.0_qp; p1 = 0.0_qp; p2 = 0.0_qp
+    p0 = 0.0_pfqp; p1 = 0.0_pfqp; p2 = 0.0_pfqp
 
-    p0(0) = 1.0_qp
-    p1(1) = 1.0_qp
+    p0(0) = 1.0_pfqp
+    p1(1) = 1.0_pfqp
 
     ! (n + 1) P_{n+1} = (2n + 1) x P_{n} - n P_{n-1}
     do m = 1, n-1
@@ -145,22 +142,22 @@ contains
   !
   ! The roots are assumed to be real.
   !
-  subroutine poly_roots(roots, p0, n) bind(c)
-    integer(c_int),  intent(in), value   :: n
-    real(qp),        intent(out)  :: roots(n)
-    real(qp),        intent(in)   :: p0(0:n)
+  subroutine poly_roots(roots, p0, n)
+    integer,    intent(in   ) :: n
+    real(pfqp), intent(  out) :: roots(n)
+    real(pfqp), intent(in   ) :: p0(0:n)
 
     integer     :: i, j, k
-    complex(qp) :: num, den, z0(n), z1(n)
-    real(qp)    :: p(0:n)
+    complex(pfqp) :: num, den, z0(n), z1(n)
+    real(pfqp)    :: p(0:n)
 
-    real(qp), parameter :: eps = 1.0q-30
+    real(pfqp), parameter :: eps = 0.1_pfqp**15
 
     p = p0 / p0(n)
 
     ! initial guess
     do i = 1, n
-       z0(i) = (0.4_qp, 0.9_qp)**i
+       z0(i) = (0.4_pfqp, 0.9_pfqp)**i
     end do
 
     ! durand-kerner-weierstrass iterations
@@ -172,7 +169,7 @@ contains
           num = poly_eval(p, n, z0(i))
 
           ! evaluate denominator
-          den = 1.0_qp
+          den = 1.0_pfqp
           do j = 1, n
              if (j == i) cycle
              den = den * (z0(i) - z0(j))
@@ -191,7 +188,7 @@ contains
     ! print *, k, 'iterations used to reach', eps
 
     roots = real(z0)
-    where (abs(roots) < eps) roots = 0.0_qp
+    where (abs(roots) < eps) roots = 0.0_pfqp
     call qsort(roots)
 
   end subroutine poly_roots
@@ -203,7 +200,7 @@ contains
   ! Adapted from http://www.fortran.com/qsort_c.f95.
   !
   recursive subroutine qsort(a)
-    real(qp), intent(inout) :: a(:)
+    real(pfqp), intent(inout) :: a(:)
     integer :: iq
 
     if (size(a) > 1) then
@@ -214,11 +211,11 @@ contains
   end subroutine qsort
 
   subroutine qsort_partition(a, marker)
-    real(qp), intent(inout) :: a(:)
-    integer,  intent(out)   :: marker
+    real(pfqp), intent(inout) :: a(:)
+    integer,    intent(  out) :: marker
 
     integer  :: i, j
-    real(qp) :: temp, x
+    real(pfqp) :: temp, x
 
     x = a(1)
     i = 0

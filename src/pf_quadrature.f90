@@ -14,9 +14,9 @@ contains
     real(pfdp), intent(out) :: smat(nnodes-1,nnodes), qmat(nnodes-1,nnodes)
     integer,    intent(out) :: nflags(nnodes)
 
-    real(c_long_double) :: qnodes0(nnodes0), qnodes(nnodes), dt
-    real(pfdp)          :: qmat0(nnodes0-1,nnodes0), smat0(nnodes0-1,nnodes0)
-    integer(c_int)      :: flags0(nnodes0)
+    real(pfqp) :: qnodes0(nnodes0), qnodes(nnodes), dt
+    real(pfdp) :: qmat0(nnodes0-1,nnodes0), smat0(nnodes0-1,nnodes0)
+    integer    :: flags0(nnodes0)
 
     integer :: qtype, i, r, refine
     logical :: composite, proper, no_left
@@ -47,7 +47,7 @@ contains
        call sdc_qnodes(qnodes0, flags0, qtype-SDC_COMPOSITE_NODES, nnodes0)
        call sdc_qmats(qmat0, smat0, qnodes0, qnodes0, flags0, nnodes0, nnodes0)
 
-       dt = 1.q0 / refine
+       dt = 1.0_pfqp / refine
        do i = 1, refine
           r = (i-1)*(nnodes0-1)+1
           qnodes(r:r+nnodes0) = dt * ((i-1) + qnodes0)
