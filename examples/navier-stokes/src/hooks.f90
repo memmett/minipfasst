@@ -58,7 +58,7 @@ contains
     real(pfdp) :: qex(size(level%qend))
 
     call shapiro(qex, pf%t0+pf%dt, npts(level%level), nu)
-    print *, '  error   ', maxval(abs(level%qend-qex))
+    print *, '-> error   ', pf%step, pf%iter, level%level, maxval(abs(level%qend-qex))
   end subroutine echo_error
 
 end module hooks

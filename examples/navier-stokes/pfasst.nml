@@ -1,11 +1,11 @@
 &prbin
 
-!  npts   = 16, 32, 64
-  npts   = 64, 64, 64
-  nnodes = 3, 3, 3
+  npts   = 16, 32, 64
+  nnodes = 2, 2, 3
   nu     = 1.d0
   dt     = 0.01d0
-  nsteps = 4
+  nsteps = 8
+  niters = 2
 
   midpoint = f
 

@@ -11,8 +11,8 @@ contains
     real(pfdp), intent(  out) :: q0(:)
     real(pfdp), intent(in   ) :: nu
     integer,    intent(in   ) :: nx
-    ! call shapiro(q0, 0.d0, nx, nu)
-    call taylor_green(q0, 0.d0, nx, nu)
+    call shapiro(q0, 0.d0, nx, nu)
+    ! call taylor_green(q0, 0.d0, nx, nu)
   end subroutine initialcondition
 
   subroutine shapiro(yex, t, nx, nu)

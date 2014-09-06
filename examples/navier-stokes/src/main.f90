@@ -57,7 +57,7 @@ contains
     call pf_pfasst_create(pf, comm, maxlevs)
 
     pf%qtype  = SDC_GAUSS_LOBATTO
-    pf%niters = 2
+    pf%niters = niters
 
     if (pf%nlevels > 1) then
        pf%levels(1)%nsweeps = 2
@@ -66,10 +66,10 @@ contains
     call pf_mpi_setup(comm, pf)
     call pf_pfasst_setup(pf, ndofs, nnodes)
 
-    print *, pf%levels(:)%nsweeps
-    print *, pf%levels(:)%user%nx
-    print *, pf%levels(:)%ndofs
-    print *, pf%levels(:)%nnodes
+    print *, 'npts:   ', pf%levels(:)%user%nx
+    print *, 'ndofs:  ', pf%levels(:)%ndofs
+    print *, 'nnodes: ', pf%levels(:)%nnodes
+    print *, 'nsweeps:', pf%levels(:)%nsweeps
 
     call pf_add_hook(pf, -1, PF_POST_SWEEP, echo_error)
     call pf_pfasst_run(pf, q0, dt, 0.0d0, nsteps_in=nsteps)

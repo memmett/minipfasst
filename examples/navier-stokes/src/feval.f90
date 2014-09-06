@@ -185,7 +185,7 @@ contains
        call fft3(lev%user%bft, lev%user%wk, 1.d0, uhat, vhat, what, u, v, w)
 
        residual = maxval(abs(utmp - u)) + maxval(abs(vtmp - v)) + maxval(abs(wtmp - w))
-       print *, '  residual', residual
+       print *, '    residual', residual
     end do
 
     call pack3(y, u, v, w)
