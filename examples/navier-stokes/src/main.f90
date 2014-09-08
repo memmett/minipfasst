@@ -51,7 +51,7 @@ contains
     print *, '==> pfasst'
 
     call pf_mpi_create(comm, MPI_COMM_WORLD)
-    call pf_pfasst_create(pf, comm, maxlevs)
+    call pf_pfasst_create(pf, comm, nlevs)
 
     pf%qtype  = SDC_GAUSS_RADAU
     pf%niters = niters
@@ -72,9 +72,13 @@ contains
 
     fine => pf%levels(pf%nlevels)
     allocate(q0(fine%ndofs))
-    call shapiro(fine%user%fft, q0, 0.d0, fine%user%nx, nu)
+    if (exact) then
+       call shapiro(fine%user%fft, q0, 0.d0, fine%user%nx, nu)
+       call pf_add_hook(pf, -1, PF_POST_SWEEP, echo_error)
+    else
+       call taylor_green(fine%user%fft, q0, 0.d0, fine%user%nx, nu)
+    end if
 
-    call pf_add_hook(pf, -1, PF_POST_SWEEP, echo_error)
     call pf_pfasst_run(pf, q0, dt, 0.0d0, nsteps_in=nsteps)
 
     call pf_pfasst_destroy(pf)
@@ -88,21 +92,25 @@ contains
     implicit none
 
     integer        :: n
-    real(pfdp)     :: t
+    real(pfdp)     :: t, ens
     type(pf_level) :: lev
     character(128) :: fname
 
     real(pfdp), allocatable :: q(:), rhs(:)
 
-    lev%level = maxlevs
-    lev%ndofs = ndofs(maxlevs)
+    lev%level = 1
+    lev%ndofs = ndofs(1)
     call user_setup(lev)
 
     print *, '==> implicit midpoint method'
 
     allocate(q(lev%ndofs), rhs(lev%ndofs))
 
-    call shapiro(lev%user%fft, q, 0.d0, lev%user%nx, nu)
+    if (exact) then
+       call shapiro(lev%user%fft, q, 0.d0, lev%user%nx, nu)
+    else
+       call taylor_green(lev%user%fft, q, 0.d0, lev%user%nx, nu)
+    end if
 
     do n = 1, nsteps
        print *, 'step:', n
@@ -111,13 +119,18 @@ contains
        call impl_solve(q, t, -dt/2, rhs, lev)
        q = 2*q - rhs
 
-       call shapiro(lev%user%fft, rhs, t+dt, npts(maxlevs), nu)
-       print *, '  error   ', maxval(abs(q-rhs))
+       if (exact) then
+          call shapiro(lev%user%fft, rhs, t+dt, npts(1), nu)
+          print *, '  error    ', maxval(abs(q-rhs))
+       end if
 
        write (fname, "('velocity_s',i0.5)") n
        call dump_velocity(fname, q, lev)
        write (fname, "('vorticity_s',i0.5)") n
        call dump_vorticity(fname, q, lev)
+
+       call enstrophy(q, lev, ens)
+       print *, '  enstrophy', n, ens
     end do
 
     call user_destroy(lev)

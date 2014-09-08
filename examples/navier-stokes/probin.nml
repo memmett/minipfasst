@@ -1,0 +1,16 @@
+&prbin
+
+  nu     = {nu}
+  npts   = {npts}
+  dt     = {dt}
+  nsteps = {nsteps}
+  nlevs  = {nlevs}
+  niters = {niters}
+
+  nthreads = {nthreads}
+
+  output   = "out.d"
+  midpoint = {midpoint}
+  exact    = f
+
+/

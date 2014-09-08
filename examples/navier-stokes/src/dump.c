@@ -46,10 +46,9 @@ void dump_velocity_c(char *dname, char *fname, int nx, int ny, int nz, double *a
     return;
   }
 
-  wbuf = malloc(3*nx*ny*nz*sizeof(double));
+  wbuf = (double*) malloc(3*nx*ny*nz*sizeof(double));
   if (wbuf == NULL) {
     snprintf(errmsg, BUFLEN, "WARNING: Unable to allocate write buffer");
-    fprintf(stderr, errmsg);
     perror(errmsg);
     return;
   }

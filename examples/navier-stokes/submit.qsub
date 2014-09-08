@@ -1,0 +1,12 @@
+#!/bin/sh
+#PBS -N {trial}
+#PBS -q {queue}
+#PBS -l mppwidth={mppwidth}
+#PBS -l walltime={walltime}
+#PBS -o /global/scratch2/sd/memmett/PFASST/tg/{trial}/stdout
+#PBS -e /global/scratch2/sd/memmett/PFASST/tg/{trial}/stderr
+#PBS -V
+
+cd /global/scratch2/sd/memmett/PFASST/tg/{trial}
+cp /global/homes/m/memmett/projects/minipfasst/examples/navier-stokes/main.exe .
+aprun -n {width} -d {nthreads} ./main.exe probin.nml

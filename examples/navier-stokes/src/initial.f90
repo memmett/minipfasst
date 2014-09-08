@@ -56,11 +56,12 @@ contains
     call pack3(q, u, v, w)
   end subroutine shapiro
 
-  subroutine taylor_green(q, t, nx, nu)
+  subroutine taylor_green(plan, q, t, nx, nu)
     use probin, only: npts
     real(pfdp), intent(in   ) :: t, nu
     real(pfdp), intent(  out) :: q(:)
     integer,    intent(in   ) :: nx
+    integer(8), intent(in   ) :: plan
 
     integer    :: i, j, k
     real(pfdp) :: ucoeff, vcoeff, wcoeff, theta, cosx, sinx, cosy, siny, cosz, sinz
@@ -94,14 +95,20 @@ contains
        end do
     end do
 
+    u = u / nx**3; v = v / nx**3; w = w / nx**3
+
+    call dfftw_execute_dft_(plan, u, u)
+    call dfftw_execute_dft_(plan, v, v)
+    call dfftw_execute_dft_(plan, w, w)
+
     call pack3(q, u, v, w)
   end subroutine taylor_green
 
-  ! Evaluate F(U).
-  subroutine vorticity(y, lev, vort)
+  ! Compute the squared magnitude of vorticity.
+  subroutine vorticity2(y, lev, vsq)
     real(pfdp),     intent(in   ) :: y(:)
     type(pf_level), intent(inout) :: lev
-    real(pfdp),     intent(  out) :: vort(:,:,:)
+    real(pfdp),     intent(  out) :: vsq(:,:,:)
 
     integer :: i, j, k, nx, ny, nz
 
@@ -138,7 +145,25 @@ contains
     call dfftw_execute_dft_(lev%user%bft, wx, wx)
     call dfftw_execute_dft_(lev%user%bft, wy, wy)
 
-    vort = realpart((wy-vz)**2 + (uz-wx)**2 + (vx-uy)**2)
-  end subroutine vorticity
+    vsq = realpart((wy-vz)**2 + (uz-wx)**2 + (vx-uy)**2)
+  end subroutine vorticity2
+
+  ! Compute total enstrophy.
+  subroutine enstrophy(y, lev, ens)
+    real(pfdp),     intent(in   ) :: y(:)
+    type(pf_level), intent(inout) :: lev
+    real(pfdp),     intent(  out) :: ens
+
+    integer :: i, j, k
+    real(pfdp) :: vsq(lev%user%nx,lev%user%ny,lev%user%nz)
+    real(pfdp) :: scale
+
+    call vorticity2(y, lev, vsq)
+    ens = 0
+    scale = 0.5d0 / (lev%user%nz * lev%user%ny * lev%user%nx)
+    do k=1,lev%user%nz; do j=1,lev%user%ny; do i=1,lev%user%nx
+       ens = ens + scale * vsq(i,j,k)
+    end do; end do; end do
+  end subroutine enstrophy
 
 end module initial

@@ -67,3 +67,13 @@ follows:
    where p(k) = -Δ⁻¹( ∇·NL(k) )
 
 3. Iterate until |U(k+1) - U(k)| < tolerance.
+
+* Taylor Green vortex behaviour
+
+Using the implicit-midpoint rule
+
+|    nu | npts |   dt | result               |
+|-------+------+------+----------------------|
+|  0.01 |   64 | 0.01 | all good             |
+| 0.001 |   64 | 0.01 | blows up ~ 700 steps |
+| 0.001 |  128 | 0.01 |                      |

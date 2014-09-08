@@ -54,10 +54,10 @@ contains
     type(pf_level), intent(inout) :: lev
     real(pfdp),     intent(in   ) :: q(:)
 
-    real(pfdp) :: vort(lev%user%nx,lev%user%ny,lev%user%nz)
-    call vorticity(q, lev, vort)
+    real(pfdp) :: vsq(lev%user%nx,lev%user%ny,lev%user%nz)
+    call vorticity2(q, lev, vsq)
     call dump_vorticity_c(trim(output) // c_null_char, trim(fname) // c_null_char, &
-         lev%user%nx, lev%user%ny, lev%user%nz, vort)
+         lev%user%nx, lev%user%ny, lev%user%nz, vsq)
   end subroutine dump_vorticity
 
   subroutine echo_error(pf, level)

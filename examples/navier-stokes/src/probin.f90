@@ -7,7 +7,7 @@ module probin
   integer, save           :: npts(maxlevs), ndofs(maxlevs), nnodes(maxlevs)
   double precision, save  :: nu, dt
   character(len=64), save :: input, output
-  logical, save           :: midpoint
+  logical, save           :: midpoint, exact
 
 contains
 
@@ -16,7 +16,7 @@ contains
 
     integer :: un
 
-    namelist /prbin/ input, output, nu, dt, nlevs, npts, nsteps, niters, nnodes, nthreads, nskip, midpoint
+    namelist /prbin/ input, output, nu, dt, nlevs, npts, nsteps, niters, nnodes, nthreads, nskip, midpoint, exact
 
     !
     ! defaults
@@ -34,6 +34,7 @@ contains
     dt      = 0.0001d0
 
     midpoint = .false.
+    exact    = .false.
 
     !
     ! read
