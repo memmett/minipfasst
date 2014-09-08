@@ -179,7 +179,7 @@ contains
 
        ! XXX: get rid of dt here...
        call pf_predictor(pf, dt)
-
+       call call_hooks(pf, -1, PF_PRE_STEP)
        do k = 1, pf%niters
           pf%iter = k
           do l = 2, pf%nlevels
@@ -187,6 +187,7 @@ contains
           end do
           call pf_v_cycle(pf, pf%nlevels)
        end do
+       call call_hooks(pf, -1, PF_POST_STEP)
 
        if (b < nblocks) then
           call pf_mpi_wait(pf, finest%level)
