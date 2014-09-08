@@ -102,7 +102,7 @@ contains
 
     allocate(q(lev%ndofs), rhs(lev%ndofs))
 
-    call shapiro(lev%user%fft, q, t, lev%user%nx, nu)
+    call shapiro(lev%user%fft, q, 0.d0, lev%user%nx, nu)
 
     do n = 1, nsteps
        print *, 'step:', n
@@ -111,7 +111,7 @@ contains
        call impl_solve(q, t, -dt/2, rhs, lev)
        q = 2*q - rhs
 
-       call shapiro(lev%user%fft, rhs, t, npts(maxlevs), nu)
+       call shapiro(lev%user%fft, rhs, t+dt, npts(maxlevs), nu)
        print *, '  error   ', maxval(abs(q-rhs))
 
        write (fname, "('velocity_s',i0.5)") n
