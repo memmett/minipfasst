@@ -45,6 +45,9 @@ contains
     type(pf_pfasst) :: pf
     type(pf_comm)   :: comm
 
+    real(pfdp), allocatable :: q0(:)
+    type(pf_level), pointer :: fine
+
     print *, '==> pfasst'
 
     call pf_mpi_create(comm, MPI_COMM_WORLD)
@@ -57,7 +60,7 @@ contains
        pf%levels(1)%nsweeps = 2
     end if
 
-    pf%levels(:)%Finterp = .true.
+!    pf%levels(:)%Finterp = .true.
 
     call pf_mpi_setup(comm, pf)
     call pf_pfasst_setup(pf, ndofs, nnodes)
@@ -67,15 +70,12 @@ contains
     print *, 'nnodes: ', pf%levels(:)%nnodes
     print *, 'nsweeps:', pf%levels(:)%nsweeps
 
-  ! allocate(q0(ndofs(maxlevs)))
-  ! call initialcondition(q0, npts(maxlevs), nu)
-  ! ! allocate(q0(ndofs(1)))
-  ! ! call initial(q0, npts(1), nu)
-
-  ! deallocate(q0)
+    fine => pf%levels(pf%nlevels)
+    allocate(q0(fine%ndofs))
+    call shapiro(fine%user%fft, q0, 0.d0, fine%user%nx, nu)
 
     call pf_add_hook(pf, -1, PF_POST_SWEEP, echo_error)
-    ! call pf_pfasst_run(pf, q0, dt, 0.0d0, nsteps_in=nsteps)
+    call pf_pfasst_run(pf, q0, dt, 0.0d0, nsteps_in=nsteps)
 
     call pf_pfasst_destroy(pf)
     call pf_mpi_destroy(comm)

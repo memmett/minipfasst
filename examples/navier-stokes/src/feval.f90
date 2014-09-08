@@ -19,78 +19,76 @@ contains
     integer :: i, j, k, nx, ny, nz
 
     complex(pfdp), dimension(lev%user%nx,lev%user%ny,lev%user%nz) :: &
-         u, v, w, uhat, vhat, what, utmp, vtmp, wtmp, &
-         ux, uy, uz, vx, vy, vz, wx, wy, wz, nluhat, nlvhat, nlwhat, phat
+         u, v, w, uhat, vhat, what, wk1, wk2, wk3, nluhat, nlvhat, nlwhat
 
-    complex(pfdp) :: kx(lev%user%nx), ky(lev%user%ny), kz(lev%user%nz), diffop
+    complex(pfdp) :: kx(lev%user%nx), ky(lev%user%ny), kz(lev%user%nz), phat
 
-    real(pfdp) :: nu, scale
+    real(pfdp) :: k2, nu, scale, diffop
 
     ! shortcuts
     nx = lev%user%nx; ny = lev%user%ny; nz = lev%user%nz
     kx = lev%user%kx; ky = lev%user%ky; kz = lev%user%kz
     nu = lev%user%nu; scale = lev%user%scale
 
-    ! unpack and transform
-    call unpack3(y, u, v, w)
-    ! call fft3(lev%user%fft, lev%user%wk, scale, u, v, w, uhat, vhat, what)
+    ! unpack
+    call unpack3(y, uhat, vhat, what)
 
-    ! gradients
-    do k=1,nz ; do j=1,ny ; do i=1,nx
-       utmp(i,j,k) = uhat(i,j,k) * kx(i)
-       vtmp(i,j,k) = uhat(i,j,k) * ky(j)
-       wtmp(i,j,k) = uhat(i,j,k) * kz(k)
-    end do; end do ; end do
-    ! call fft3(lev%user%bft, lev%user%wk, 1.d0, utmp, vtmp, wtmp, ux, uy, uz)
+    call dfftw_execute_dft_(lev%user%bft, uhat, u)
+    call dfftw_execute_dft_(lev%user%bft, vhat, v)
+    call dfftw_execute_dft_(lev%user%bft, what, w)
 
     do k=1,nz ; do j=1,ny ; do i=1,nx
-       utmp(i,j,k) = vhat(i,j,k) * kx(i)
-       vtmp(i,j,k) = vhat(i,j,k) * ky(j)
-       wtmp(i,j,k) = vhat(i,j,k) * kz(k)
+       wk1(i,j,k) = uhat(i,j,k) * kx(i)
+       wk2(i,j,k) = uhat(i,j,k) * ky(j)
+       wk3(i,j,k) = uhat(i,j,k) * kz(k)
     end do; end do ; end do
-    ! call fft3(lev%user%bft, lev%user%wk, 1.d0, utmp, vtmp, wtmp, vx, vy, vz)
+    call dfftw_execute_dft_(lev%user%bft, wk1, wk1)
+    call dfftw_execute_dft_(lev%user%bft, wk2, wk2)
+    call dfftw_execute_dft_(lev%user%bft, wk3, wk3)
+    nluhat = (u * wk1 + v * wk2 + w * wk3) * scale
+    call dfftw_execute_dft_(lev%user%fft, nluhat, nluhat)
 
     do k=1,nz ; do j=1,ny ; do i=1,nx
-       utmp(i,j,k) = what(i,j,k) * kx(i)
-       vtmp(i,j,k) = what(i,j,k) * ky(j)
-       wtmp(i,j,k) = what(i,j,k) * kz(k)
+       wk1(i,j,k) = vhat(i,j,k) * kx(i)
+       wk2(i,j,k) = vhat(i,j,k) * ky(j)
+       wk3(i,j,k) = vhat(i,j,k) * kz(k)
     end do; end do ; end do
-    ! call fft3(lev%user%bft, lev%user%wk, 1.d0, utmp, vtmp, wtmp, wx, wy, wz)
+    call dfftw_execute_dft_(lev%user%bft, wk1, wk1)
+    call dfftw_execute_dft_(lev%user%bft, wk2, wk2)
+    call dfftw_execute_dft_(lev%user%bft, wk3, wk3)
+    nlvhat = (u * wk1 + v * wk2 + w * wk3) * scale
+    call dfftw_execute_dft_(lev%user%fft, nlvhat, nlvhat)
 
-    ! nonlinear terms
-    utmp = u * ux + v * uy + w * uz
-    vtmp = u * vx + v * vy + w * vz
-    wtmp = u * wx + v * wy + w * wz
-    ! call fft3(lev%user%fft, lev%user%wk, scale, utmp, vtmp, wtmp, nluhat, nlvhat, nlwhat)
-
-    ! pressure
-    do k=1,nz
-       do j=1,ny
-          do i=1,nx
-             phat(i,j,k) = -1.0d0 * ( &
-                  + kx(i)*nluhat(i,j,k) &
-                  + ky(j)*nlvhat(i,j,k) &
-                  + kz(k)*nlwhat(i,j,k) ) &
-                  / (kx(i)*kx(i) + ky(j)*ky(j) + kz(k)*kz(k) + 0.1d0**13)
-          end do
-       end do
-    end do
+    do k=1,nz ; do j=1,ny ; do i=1,nx
+       wk1(i,j,k) = what(i,j,k) * kx(i)
+       wk2(i,j,k) = what(i,j,k) * ky(j)
+       wk3(i,j,k) = what(i,j,k) * kz(k)
+    end do; end do ; end do
+    call dfftw_execute_dft_(lev%user%bft, wk1, wk1)
+    call dfftw_execute_dft_(lev%user%bft, wk2, wk2)
+    call dfftw_execute_dft_(lev%user%bft, wk3, wk3)
+    nlwhat = (u * wk1 + v * wk2 + w * wk3) * scale
+    call dfftw_execute_dft_(lev%user%fft, nlwhat, nlwhat)
 
     ! evaluate
     do k=1,nz
        do j=1,ny
           do i=1,nx
-             diffop = nu * ( kx(i)*kx(i) + ky(j)*ky(j) + kz(k)*kz(k) )
-             uhat(i,j,k) = - nluhat(i,j,k) - kx(i)*phat(i,j,k) + diffop * uhat(i,j,k)
-             vhat(i,j,k) = - nlvhat(i,j,k) - ky(j)*phat(i,j,k) + diffop * vhat(i,j,k)
-             what(i,j,k) = - nlwhat(i,j,k) - kz(k)*phat(i,j,k) + diffop * what(i,j,k)
+             k2 = realpart(kx(i)*kx(i) + ky(j)*ky(j) + kz(k)*kz(k))
+             diffop = nu * k2
+
+             ! pressure
+             phat = -( kx(i)*nluhat(i,j,k) + ky(j)*nlvhat(i,j,k) + kz(k)*nlwhat(i,j,k) ) / (k2 + 0.1d0**13)
+
+             uhat(i,j,k) = - nluhat(i,j,k) - kx(i)*phat + diffop * uhat(i,j,k)
+             vhat(i,j,k) = - nlvhat(i,j,k) - ky(j)*phat + diffop * vhat(i,j,k)
+             what(i,j,k) = - nlwhat(i,j,k) - kz(k)*phat + diffop * what(i,j,k)
+
           end do
        end do
     end do
 
-    ! call fft3(lev%user%bft, lev%user%wk, 1.d0, uhat, vhat, what, u, v, w)
-
-    call pack3(f, u, v, w)
+    call pack3(f, uhat, vhat, what)
   end subroutine impl_eval
 
   ! Solve U + a F(U) = RHS.

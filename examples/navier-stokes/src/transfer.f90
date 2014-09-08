@@ -17,11 +17,10 @@ contains
 
     integer :: i, j, k, ii, jj, kk, nG, nF
 
-    complex(pfdp), dimension(fine%user%nx,fine%user%ny,fine%user%nz) :: fu, fv, fw, fuhat, fvhat, fwhat
-    complex(pfdp), dimension(crse%user%nx,crse%user%ny,crse%user%nz) :: cu, cv, cw, cuhat, cvhat, cwhat
+    complex(pfdp), dimension(fine%user%nx,fine%user%ny,fine%user%nz) :: fuhat, fvhat, fwhat
+    complex(pfdp), dimension(crse%user%nx,crse%user%ny,crse%user%nz) :: cuhat, cvhat, cwhat
 
-    call unpack3(qG, cu, cv, cw)
-    ! call fft3(crse%user%fft, crse%user%wk, crse%user%scale, cu, cv, cw, cuhat, cvhat, cwhat)
+    call unpack3(qG, cuhat, cvhat, cwhat)
 
     nG = crse%user%nx
     nF = fine%user%nx
@@ -63,8 +62,7 @@ contains
           end do
        end do
     end do
-    ! call fft3(fine%user%bft, fine%user%wk, 1.d0, fuhat, fvhat, fwhat, fu, fv, fw)
-    call pack3(qF, fu, fv, fw)
+    call pack3(qF, fuhat, fvhat, fwhat)
   end subroutine interpolate
 
   subroutine restrict(qF, qG, fine, crse, t)
@@ -72,21 +70,56 @@ contains
     real(pfdp),     intent(  out) :: qG(:)
     type(pf_level), intent(in   ) :: fine, crse
 
-    integer :: i, j, k
+    integer :: i, j, k, ii, jj, kk, nG, nF
 
-    complex(pfdp), dimension(fine%user%nx,fine%user%ny,fine%user%nz) :: fu, fv, fw
-    complex(pfdp), dimension(crse%user%nx,crse%user%ny,crse%user%nz) :: cu, cv, cw
+    complex(pfdp), dimension(fine%user%nx,fine%user%ny,fine%user%nz) :: fuhat, fvhat, fwhat
+    complex(pfdp), dimension(crse%user%nx,crse%user%ny,crse%user%nz) :: cuhat, cvhat, cwhat
 
-    call unpack3(qF, fu, fv, fw)
-    do k = 1, crse%user%nz
-       do j = 1, crse%user%ny
-          do i = 1, crse%user%nx
-             cu(i,j,k) = fu(2*(i-1)+1,2*(j-1)+1,2*(k-1)+1)
-             cv(i,j,k) = fv(2*(i-1)+1,2*(j-1)+1,2*(k-1)+1)
-             cw(i,j,k) = fw(2*(i-1)+1,2*(j-1)+1,2*(k-1)+1)
+    nG = crse%user%nx
+    nF = fine%user%nx
+
+    call unpack3(qF, fuhat, fvhat, fwhat)
+    call unpack3(qG, cuhat, cvhat, cwhat)
+
+    cuhat = 0
+    cvhat = 0
+    cwhat = 0
+
+    do k = 1, nG
+       if (k <= nG/2) then
+          kk = k
+       else if (k > nG/2+1) then
+          kk = nF - nG + k
+       else
+          cycle
+       end if
+
+       do j = 1, nG
+          if (j <= nG/2) then
+             jj = j
+          else if (j > nG/2+1) then
+             jj = nF - nG + j
+          else
+             cycle
+          end if
+
+          do i = 1, nG
+             if (i <= nG/2) then
+                ii = i
+             else if (i > nG/2+1) then
+                ii = nF - nG + i
+             else
+                cycle
+             end if
+
+             cuhat(i,j,k) = fuhat(ii,jj,kk)
+             cvhat(i,j,k) = fvhat(ii,jj,kk)
+             cwhat(i,j,k) = fwhat(ii,jj,kk)
+
           end do
        end do
     end do
-    call pack3(qG, cu, cv, cw)
+
+    call pack3(qG, cuhat, cvhat, cwhat)
   end subroutine restrict
 end module transfer
