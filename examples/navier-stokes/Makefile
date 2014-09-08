@@ -14,8 +14,8 @@ CSRC    += src/dump.c
 FFLAGS  += -Wall -Wno-unused-dummy-argument -g -I$(FFTW)/include
 LDFLAGS += -g -L$(FFTW)/lib -lfftw3_threads -lfftw3
 
-#FFLAGS  += -O3 -g -I$(FFTW)/include
-#LDFLAGS += -L$(FFTW)/lib -lfftw3
+# FFLAGS  += -O3 -g -I$(FFTW)/include
+# LDFLAGS += -L$(FFTW)/lib -lfftw3_threads -lfftw3
 
 all: $(EXE)
 

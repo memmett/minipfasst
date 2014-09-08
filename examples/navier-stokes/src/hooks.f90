@@ -29,11 +29,22 @@ contains
 
   subroutine dump_velocity(fname, q, lev)
     use probin, only: output
+    use feval
     character(*),   intent(in   ) :: fname
     real(pfdp),     intent(in   ) :: q(:)
     type(pf_level), intent(inout) :: lev
+
+    complex(pfdp), dimension(lev%user%nx,lev%user%ny,lev%user%nz) :: u, v, w
+    real(pfdp), dimension(lev%ndofs) :: qdump
+
+    call unpack3(q, u, w, v)
+    call dfftw_execute_dft_(lev%user%bft, u, u)
+    call dfftw_execute_dft_(lev%user%bft, v, v)
+    call dfftw_execute_dft_(lev%user%bft, w, w)
+    call pack3(qdump, u, v, w)
+
     call dump_velocity_c(trim(output) // c_null_char, trim(fname) // c_null_char, &
-         lev%user%nx, lev%user%ny, lev%user%nz, q)
+         lev%user%nx, lev%user%ny, lev%user%nz, qdump)
   end subroutine dump_velocity
 
   subroutine dump_vorticity(fname, q, lev)
@@ -57,7 +68,7 @@ contains
 
     real(pfdp) :: qex(size(level%qend))
 
-    call shapiro(qex, pf%t0+pf%dt, npts(level%level), nu)
+    call shapiro(level%user%fft, qex, pf%t0+pf%dt, npts(level%level), nu)
     print *, '-> error   ', pf%step, pf%iter, level%level, maxval(abs(level%qend-qex))
   end subroutine echo_error
 

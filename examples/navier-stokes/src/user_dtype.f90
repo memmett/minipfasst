@@ -10,7 +10,6 @@ module user_dtype
      integer    :: nx, ny, nz
      real(pfdp) :: nu, scale, tol
      integer(8) :: fft, bft
-     complex(pfdp), dimension(:,:,:), allocatable :: wk
-     complex(pfdp), dimension(:), allocatable     :: kx, ky, kz
+     complex(pfdp), dimension(:), allocatable :: kx, ky, kz
   end type pf_user
 end module user_dtype

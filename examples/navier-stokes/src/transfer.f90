@@ -6,7 +6,7 @@
 
 module transfer
   use pf_mod_dtype
-  use feval, only: pack3, unpack3, fft3
+  use feval, only: pack3, unpack3
   implicit none
 contains
 
@@ -21,7 +21,7 @@ contains
     complex(pfdp), dimension(crse%user%nx,crse%user%ny,crse%user%nz) :: cu, cv, cw, cuhat, cvhat, cwhat
 
     call unpack3(qG, cu, cv, cw)
-    call fft3(crse%user%fft, crse%user%wk, crse%user%scale, cu, cv, cw, cuhat, cvhat, cwhat)
+    ! call fft3(crse%user%fft, crse%user%wk, crse%user%scale, cu, cv, cw, cuhat, cvhat, cwhat)
 
     nG = crse%user%nx
     nF = fine%user%nx
@@ -63,7 +63,7 @@ contains
           end do
        end do
     end do
-    call fft3(fine%user%bft, fine%user%wk, 1.d0, fuhat, fvhat, fwhat, fu, fv, fw)
+    ! call fft3(fine%user%bft, fine%user%wk, 1.d0, fuhat, fvhat, fwhat, fu, fv, fw)
     call pack3(qF, fu, fv, fw)
   end subroutine interpolate
 

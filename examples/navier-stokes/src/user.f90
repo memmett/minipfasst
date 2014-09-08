@@ -19,15 +19,21 @@ contains
 
     integer :: i, nx, ny, nz
 
-    lev%user%nx = npts(lev%level); lev%user%ny = npts(lev%level); lev%user%nz = npts(lev%level)
+    complex(pfdp), allocatable :: wk(:,:,:)
 
-    nx = lev%user%nx; ny = lev%user%ny; nz = lev%user%nz
+    lev%user%nx = npts(lev%level)
+    lev%user%ny = npts(lev%level)
+    lev%user%nz = npts(lev%level)
 
-    allocate(lev%user%wk(nx,ny,nz))
+    nx = lev%user%nx
+    ny = lev%user%ny
+    nz = lev%user%nz
+
+    allocate(wk(nx,ny,nz))
     allocate(lev%user%kx(nx), lev%user%ky(ny), lev%user%kz(nz))
 
-    call dfftw_plan_dft_3d_(lev%user%fft, nx, ny, nz, lev%user%wk, lev%user%wk, FFTW_FORWARD, FFTW_ESTIMATE)
-    call dfftw_plan_dft_3d_(lev%user%bft, nx, ny, nz, lev%user%wk, lev%user%wk, FFTW_BACKWARD, FFTW_ESTIMATE)
+    call dfftw_plan_dft_3d_(lev%user%fft, nx, ny, nz, wk, wk, FFTW_FORWARD, FFTW_ESTIMATE)
+    call dfftw_plan_dft_3d_(lev%user%bft, nx, ny, nz, wk, wk, FFTW_BACKWARD, FFTW_ESTIMATE)
 
     do i = 1, nx/2+1
        lev%user%kx(i) = (0.0d0,1.0d0) * dble(i-1)
@@ -42,13 +48,11 @@ contains
 
     lev%user%scale = 1.0d0/dble(nx*ny*nz)
     lev%user%tol   = 1.d-8
-    lev%user%nu = nu
+    lev%user%nu    = nu
   end subroutine user_setup
 
   subroutine user_destroy(lev)
     type(pf_level), intent(inout) :: lev
-    deallocate(lev%user%wk)
-    ! XXX
     call dfftw_destroy_plan_(lev%user%fft)
     call dfftw_destroy_plan_(lev%user%bft)
   end subroutine user_destroy

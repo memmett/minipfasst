@@ -5,21 +5,17 @@
 module initial
   use feval
   implicit none
+
+  real(pfdp), parameter :: pi = 3.14159265358979323846264338327950288419716939937510_pfdp
+
 contains
 
-  subroutine initialcondition(q0, nx, nu)
-    real(pfdp), intent(  out) :: q0(:)
-    real(pfdp), intent(in   ) :: nu
-    integer,    intent(in   ) :: nx
-    call shapiro(q0, 0.d0, nx, nu)
-    ! call taylor_green(q0, 0.d0, nx, nu)
-  end subroutine initialcondition
-
-  subroutine shapiro(yex, t, nx, nu)
+  subroutine shapiro(plan, q, t, nx, nu)
     use probin, only: npts
     real(pfdp), intent(in   ) :: t, nu
-    real(pfdp), intent(  out) :: yex(:)
+    real(pfdp), intent(  out) :: q(:)
     integer,    intent(in   ) :: nx
+    integer(8), intent(in   ) :: plan
 
     integer    :: i, j, k
     real(pfdp) :: sqrt3, expt, cosx, sinx, cosy, siny, cosz, sinz
@@ -51,13 +47,19 @@ contains
        end do
     end do
 
-    call pack3(yex, u, v, w)
+    u = u / nx**3; v = v / nx**3; w = w / nx**3
+
+    call dfftw_execute_dft_(plan, u, u)
+    call dfftw_execute_dft_(plan, v, v)
+    call dfftw_execute_dft_(plan, w, w)
+
+    call pack3(q, u, v, w)
   end subroutine shapiro
 
-  subroutine taylor_green(yex, t, nx, nu)
+  subroutine taylor_green(q, t, nx, nu)
     use probin, only: npts
     real(pfdp), intent(in   ) :: t, nu
-    real(pfdp), intent(  out) :: yex(:)
+    real(pfdp), intent(  out) :: q(:)
     integer,    intent(in   ) :: nx
 
     integer    :: i, j, k
@@ -92,7 +94,7 @@ contains
        end do
     end do
 
-    call pack3(yex, u, v, w)
+    call pack3(q, u, v, w)
   end subroutine taylor_green
 
   ! Evaluate F(U).
@@ -104,41 +106,37 @@ contains
     integer :: i, j, k, nx, ny, nz
 
     complex(pfdp), dimension(lev%user%nx,lev%user%ny,lev%user%nz) :: &
-         u, v, w, uhat, vhat, what, utmp, vtmp, wtmp, ux, uy, uz, vx, vy, vz, wx, wy, wz
+         uhat, vhat, what, uy, uz, vx, vz, wx, wy
 
     complex(pfdp) :: kx(lev%user%nx), ky(lev%user%ny), kz(lev%user%nz)
-    real(pfdp)    :: nu, scale
 
     ! shortcuts
     nx = lev%user%nx; ny = lev%user%ny; nz = lev%user%nz
     kx = lev%user%kx; ky = lev%user%ky; kz = lev%user%kz
-    nu = lev%user%nu; scale = lev%user%scale
 
-    ! unpack and transform
-    call unpack3(y, u, v, w)
-    call fft3(lev%user%fft, lev%user%wk, scale, u, v, w, uhat, vhat, what)
-
-    ! gradients
-    do k=1,nz ; do j=1,ny ; do i=1,nx
-       utmp(i,j,k) = uhat(i,j,k) * kx(i)
-       vtmp(i,j,k) = uhat(i,j,k) * ky(j)
-       wtmp(i,j,k) = uhat(i,j,k) * kz(k)
-    end do; end do ; end do
-    call fft3(lev%user%bft, lev%user%wk, 1.d0, utmp, vtmp, wtmp, ux, uy, uz)
+    ! unpack
+    call unpack3(y, uhat, vhat, what)
 
     do k=1,nz ; do j=1,ny ; do i=1,nx
-       utmp(i,j,k) = vhat(i,j,k) * kx(i)
-       vtmp(i,j,k) = vhat(i,j,k) * ky(j)
-       wtmp(i,j,k) = vhat(i,j,k) * kz(k)
+       uy(i,j,k) = uhat(i,j,k) * ky(j)
+       uz(i,j,k) = uhat(i,j,k) * kz(k)
     end do; end do ; end do
-    call fft3(lev%user%bft, lev%user%wk, 1.d0, utmp, vtmp, wtmp, vx, vy, vz)
+    call dfftw_execute_dft_(lev%user%bft, uy, uy)
+    call dfftw_execute_dft_(lev%user%bft, uz, uz)
 
     do k=1,nz ; do j=1,ny ; do i=1,nx
-       utmp(i,j,k) = what(i,j,k) * kx(i)
-       vtmp(i,j,k) = what(i,j,k) * ky(j)
-       wtmp(i,j,k) = what(i,j,k) * kz(k)
+       vx(i,j,k) = vhat(i,j,k) * kx(i)
+       vz(i,j,k) = vhat(i,j,k) * kz(k)
     end do; end do ; end do
-    call fft3(lev%user%bft, lev%user%wk, 1.d0, utmp, vtmp, wtmp, wx, wy, wz)
+    call dfftw_execute_dft_(lev%user%bft, vx, vx)
+    call dfftw_execute_dft_(lev%user%bft, vz, vz)
+
+    do k=1,nz ; do j=1,ny ; do i=1,nx
+       wx(i,j,k) = what(i,j,k) * kx(i)
+       wy(i,j,k) = what(i,j,k) * ky(j)
+    end do; end do ; end do
+    call dfftw_execute_dft_(lev%user%bft, wx, wx)
+    call dfftw_execute_dft_(lev%user%bft, wy, wy)
 
     vort = realpart((wy-vz)**2 + (uz-wx)**2 + (vx-uy)**2)
   end subroutine vorticity
