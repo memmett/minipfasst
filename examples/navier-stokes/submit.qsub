@@ -9,4 +9,4 @@
 
 cd /global/scratch2/sd/memmett/PFASST/tg/{trial}
 cp /global/homes/m/memmett/projects/minipfasst/examples/navier-stokes/main.exe .
-aprun -n {width} -d {nthreads} ./main.exe probin.nml
+aprun -N 2 -n {width} -d {nthreads} ./main.exe probin.nml

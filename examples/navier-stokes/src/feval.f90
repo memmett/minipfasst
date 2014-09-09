@@ -99,7 +99,7 @@ contains
     type(pf_level), intent(inout) :: lev
     integer,        intent(in   ) :: step
 
-    integer :: i, j, k, nx, ny, nz
+    integer :: iter, i, j, k, nx, ny, nz
 
     complex(pfdp), dimension(lev%user%nx,lev%user%ny,lev%user%nz) :: &
          u, v, w, uhat, vhat, what, u0hat, v0hat, w0hat, wk1, wk2, wk3, &
@@ -119,6 +119,7 @@ contains
     call unpack3(y, uhat, vhat, what)
 
     ! fixed point iteration
+    iter = 1
     residual = 1
     do while (residual > lev%user%tol)
 
@@ -183,7 +184,8 @@ contains
        end do
 
        residual = maxval(abs(wk1 - uhat)) + maxval(abs(wk2 - vhat)) + maxval(abs(wk3 - what))
-       print *, '    residual', step, residual
+       print '(a20,i6,i3,i3,es20.12,es8.1)', 'residual', step, lev%level, iter, residual, lev%user%tol
+       iter = iter + 1
     end do
 
     call pack3(y, uhat, vhat, what)

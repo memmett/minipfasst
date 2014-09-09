@@ -69,8 +69,6 @@ contains
     print *, 'nnodes: ', pf%levels(:)%nnodes
     print *, 'nsweeps:', pf%levels(:)%nsweeps
 
-    pf%levels(:)%user%tol = 0.01
-
     fine => pf%levels(pf%nlevels)
     allocate(q0(fine%ndofs))
     if (exact) then

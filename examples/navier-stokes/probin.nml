@@ -2,6 +2,7 @@
 
   nu     = {nu}
   npts   = {npts}
+  nnodes = {nnodes}
   dt     = {dt}
   nsteps = {nsteps}
   nlevs  = {nlevs}
