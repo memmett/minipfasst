@@ -60,7 +60,7 @@ contains
          lev%user%nx, lev%user%ny, lev%user%nz, vsq)
   end subroutine dump_vorticity
 
-  subroutine echo_error(pf, level)
+  subroutine echo_error_hook(pf, level)
     use probin, only: npts, nu
     use initial, only: shapiro
     type(pf_pfasst), intent(inout) :: pf
@@ -70,6 +70,17 @@ contains
 
     call shapiro(level%user%fft, qex, pf%t0+pf%dt, npts(level%level), nu)
     print *, '-> error   ', pf%step, pf%iter, level%level, maxval(abs(level%qend-qex))
-  end subroutine echo_error
+  end subroutine echo_error_hook
+
+  subroutine echo_enstrophy_hook(pf, level)
+    use probin, only: npts, nu
+    use initial, only: enstrophy
+    type(pf_pfasst), intent(inout) :: pf
+    type(pf_level),  intent(inout) :: level
+    real(pfdp) :: ens
+    if (level%level /= pf%nlevels) return
+    call enstrophy(level%qend, level, ens)
+    print *, '  enstrophy', pf%step, ens
+  end subroutine echo_enstrophy_hook
 
 end module hooks

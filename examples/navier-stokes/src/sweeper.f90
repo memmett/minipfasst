@@ -41,7 +41,7 @@ contains
     do m = 1, lev%nnodes-1
        t = t + dtsdc(m)
        rhs = lev%Q(:,m) + S(:,m)
-       call impl_solve(lev%Q(:,m+1), t, -dtsdc(m), rhs, lev)
+       call impl_solve(lev%Q(:,m+1), t, -dtsdc(m), rhs, lev, pf%step)
        lev%F(:,m+1,1) = -(rhs - lev%Q(:,m+1)) / dtsdc(m)
     end do
 

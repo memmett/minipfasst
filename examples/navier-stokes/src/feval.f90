@@ -92,11 +92,12 @@ contains
   end subroutine impl_eval
 
   ! Solve U + a F(U) = RHS.
-  subroutine impl_solve(y, t, a, rhs, lev)
+  subroutine impl_solve(y, t, a, rhs, lev, step)
     real(pfdp),     intent(inout) :: y(:)
     real(pfdp),     intent(in   ) :: rhs(:)
     real(pfdp),     intent(in   ) :: t, a
     type(pf_level), intent(inout) :: lev
+    integer,        intent(in   ) :: step
 
     integer :: i, j, k, nx, ny, nz
 
@@ -182,7 +183,7 @@ contains
        end do
 
        residual = maxval(abs(wk1 - uhat)) + maxval(abs(wk2 - vhat)) + maxval(abs(wk3 - what))
-       print *, '    residual', residual
+       print *, '    residual', step, residual
     end do
 
     call pack3(y, uhat, vhat, what)

@@ -69,15 +69,18 @@ contains
     print *, 'nnodes: ', pf%levels(:)%nnodes
     print *, 'nsweeps:', pf%levels(:)%nsweeps
 
+    pf%levels(:)%user%tol = 0.01
+
     fine => pf%levels(pf%nlevels)
     allocate(q0(fine%ndofs))
     if (exact) then
        call shapiro(fine%user%fft, q0, 0.d0, fine%user%nx, nu)
-       call pf_add_hook(pf, -1, PF_POST_SWEEP, echo_error)
+       call pf_add_hook(pf, -1, PF_POST_SWEEP, echo_error_hook)
     else
        call taylor_green(fine%user%fft, q0, 0.d0, fine%user%nx, nu)
     end if
 
+    call pf_add_hook(pf, -1, PF_POST_STEP, echo_enstrophy_hook)
     call pf_pfasst_run(pf, q0, dt, 0.0d0, nsteps_in=nsteps)
 
     call pf_pfasst_destroy(pf)
@@ -115,7 +118,7 @@ contains
        print *, 'step:', n
        t   = (n-1) * dt
        rhs = q
-       call impl_solve(q, t, -dt/2, rhs, lev)
+       call impl_solve(q, t, -dt/2, rhs, lev, n)
        q = 2*q - rhs
 
        if (exact) then
