@@ -50,7 +50,7 @@ build/pf_hooks.o:       build/pf_dtype.o
 build/pf_mpi.o:         build/pf_dtype.o
 build/pf_restrict.o:    build/pf_utils.o build/pf_hooks.o build/transfer.o
 build/pf_interpolate.o: build/pf_restrict.o build/pf_hooks.o build/sweeper.o
-build/pf_parallel.o:    build/pf_interpolate.o build/pf_hooks.o build/pf_mpi.o
+build/pf_parallel.o:    build/pf_interpolate.o build/pf_hooks.o build/pf_mpi.o build/pf_timer.o
 build/sdc_quadrature.o: build/pf_dtype.o build/sdc_poly.o
 build/pf_quadrature.o:  build/sdc_quadrature.o
 build/pf_options.o:     build/pf_dtype.o
