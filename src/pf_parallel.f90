@@ -8,6 +8,7 @@ module pf_mod_parallel
   use pf_mod_restrict
   use pf_mod_utils
   use pf_mod_hooks
+  use pf_mod_timer
   use pf_mod_comm_mpi
   use sweeper
   implicit none
@@ -27,7 +28,7 @@ contains
     real(pfdp),      intent(in   ) :: dt
 
     type(pf_level), pointer :: fine, crse
-    integer    :: j, k, l
+    integer    :: k, l
     real(pfdp) :: t0k
 
     call call_hooks(pf, 1, PF_PRE_PREDICTOR)
@@ -60,26 +61,16 @@ contains
                       call spreadq0(crse, pf%t0)
                    end if
                 end if
-
-                call call_hooks(pf, crse%level, PF_PRE_SWEEP)
-                call sweep(pf, crse, pf%t0, dt)
-                ! call pf_residual(pf, crse, dt)
-                call call_hooks(pf, crse%level, PF_POST_SWEEP)
+                call pf_sweep(pf, crse, 1)
              end do
 
              ! now we have mimicked the burn in and we must do pipe-lined sweeps
              do k = 1, crse%nsweeps-1
-                pf%iter =-(pf%rank + 1) -k
-
-                !  Get new initial conditions
+                pf%iter = -(pf%rank + 1) - k
                 call pf_recv(pf, crse, crse%level*20000+pf%rank, .true.)
-                call call_hooks(pf, crse%level, PF_PRE_SWEEP)
-                call sweep(pf, crse, pf%t0, dt)
-                call call_hooks(pf, crse%level, PF_POST_SWEEP)
-                !  Send forward
+                call pf_sweep(pf, crse, 1)
                 call pf_send(pf, crse,  crse%level*20000+pf%rank+1, .true.)
              end do
-             ! call pf_residual(pf, crse, dt)
 
           else
 
@@ -96,12 +87,8 @@ contains
                    end if
                 end if
 
-                call call_hooks(pf, crse%level, PF_PRE_SWEEP)
-                do j = 1, crse%nsweeps
-                   call sweep(pf, crse, t0k, dt)
-                end do
-                ! call pf_residual(pf, crse, dt)
-                call call_hooks(pf, crse%level, PF_POST_SWEEP)
+                ! XXX: need to add t0k back into calling signature...
+                call pf_sweep(pf, crse)
              end do
           end if
 
@@ -112,13 +99,7 @@ contains
           do k = 1, pf%rank + 1
              pf%iter = -k
              t0k = pf%t0-(pf%rank)*dt + (k-1)*dt
-
-             call call_hooks(pf, crse%level, PF_PRE_SWEEP)
-             do j = 1, crse%nsweeps
-                call sweep(pf, crse, t0k, dt)
-             end do
-             ! call pf_residual(pf, crse, dt)
-             call call_hooks(pf, crse%level, PF_POST_SWEEP)
+             call pf_sweep(pf, crse)
           end do
 
        end if
@@ -129,12 +110,7 @@ contains
           fine => pf%levels(l); crse => pf%levels(l-1)
           call interpolate_time_space(pf, pf%t0, dt, fine, crse, crse%Finterp)
           fine%q0 = fine%Q(:,1)
-
-          call call_hooks(pf, l, PF_PRE_SWEEP)
-          do j = 1, fine%nsweeps
-             call sweep(pf, fine, pf%t0, dt)
-          end do
-          call call_hooks(pf, l, PF_POST_SWEEP)
+          call pf_sweep(pf, fine)
        end do
 
        fine => pf%levels(pf%nlevels); crse => pf%levels(pf%nlevels-1)
@@ -219,15 +195,10 @@ contains
     integer,         intent(in   ) :: level
 
     type(pf_level), pointer :: crse
-    integer :: j
 
     crse => pf%levels(level)
     call pf_recv(pf, crse, crse%level*10000+pf%iter, .true.)
-    call call_hooks(pf, crse%level, PF_PRE_SWEEP)
-    do j = 1, crse%nsweeps
-       call sweep(pf, crse, pf%t0, pf%dt)
-    end do
-    call call_hooks(pf, crse%level, PF_POST_SWEEP)
+    call pf_sweep(pf, crse)
     call pf_send(pf, crse, crse%level*10000+pf%iter, .true.)
   end subroutine pf_v_cycle_bottom
 
@@ -236,17 +207,11 @@ contains
     integer,         intent(in   ) :: level
 
     type(pf_level), pointer :: crse, fine
-    integer :: j
 
     fine => pf%levels(level)
     crse => pf%levels(level-1)
 
-    call call_hooks(pf, fine%level, PF_PRE_SWEEP)
-    do j = 1, fine%nsweeps
-       call sweep(pf, fine, pf%t0, pf%dt)
-    end do
-    ! call pf_residual(pf, fine, pf%dt)
-    call call_hooks(pf, fine%level, PF_POST_SWEEP)
+    call pf_sweep(pf, fine)
     call pf_send(pf, fine, fine%level*10000+pf%iter, .false.)
     call restrict_time_space_fas(pf, pf%t0, pf%dt, fine, crse)
     call save(crse)
@@ -258,7 +223,6 @@ contains
     integer,         intent(in   ) :: level
 
     type(pf_level), pointer :: crse, fine
-    integer :: j
 
     fine => pf%levels(level)
     crse => pf%levels(level-1)
@@ -271,19 +235,34 @@ contains
     end if
 
     if (fine%level < pf%nlevels) then
-       call call_hooks(pf, fine%level, PF_PRE_SWEEP)
-       do j = 1, fine%nsweeps
-          call sweep(pf, fine, pf%t0, pf%dt)
-       end do
-       ! call pf_residual(pf, F, dt)
-       call call_hooks(pf, fine%level, PF_POST_SWEEP)
+       call pf_sweep(pf, fine)
     end if
 
   end subroutine pf_v_cycle_up
 
   !
-  ! Communication helpers
+  ! Helpers
   !
+
+  subroutine pf_sweep(pf, level, nsweeps)
+    type(pf_pfasst), intent(inout)           :: pf
+    type(pf_level),  intent(inout)           :: level
+    integer,         intent(in   ), optional :: nsweeps
+    integer :: j, nswps
+    if (present(nsweeps)) then
+       nswps = nsweeps
+    else
+       nswps = level%nsweeps
+    end if
+    call call_hooks(pf, level%level, PF_PRE_SWEEP)
+    call start_timer(pf, TLEVEL+level%level-1)
+    do j = 1, nswps
+       call sweep(pf, level, pf%t0, pf%dt)
+    end do
+    call end_timer(pf, TLEVEL+level%level-1)
+    call call_hooks(pf, level%level, PF_POST_SWEEP)
+  end subroutine pf_sweep
+
   subroutine pf_post(pf, level, tag)
     type(pf_pfasst), intent(in   ) :: pf
     type(pf_level),  intent(inout) :: level
@@ -298,9 +277,11 @@ contains
     type(pf_level),  intent(inout) :: level
     integer,         intent(in   ) :: tag
     logical,         intent(in   ) :: blocking
+    call start_timer(pf, TSEND+level%level-1)
     if (pf%rank /= pf%comm%nproc-1) then
        call pf_mpi_send(pf, level, tag, blocking)
     end if
+    call end_timer(pf, TSEND+level%level-1)
   end subroutine pf_send
 
   subroutine pf_recv(pf, level, tag, blocking)
@@ -308,16 +289,20 @@ contains
     type(pf_level),  intent(inout) :: level
     integer,         intent(in   ) :: tag
     logical,         intent(in   ) :: blocking
+    call start_timer(pf, TRECEIVE+level%level-1)
     if (pf%rank /= 0) then
        call pf_mpi_recv(pf, level, tag, blocking)
     end if
+    call end_timer(pf, TRECEIVE+level%level-1)
   end subroutine pf_recv
 
   subroutine pf_broadcast(pf, y, nvar, root)
     type(pf_pfasst), intent(inout) :: pf
     real(pfdp)  ,    intent(in   ) :: y(nvar)
     integer,         intent(in   ) :: nvar, root
+    call start_timer(pf, TBROADCAST)
     call pf_mpi_broadcast(pf, y, nvar, root)
+    call end_timer(pf, TBROADCAST)
   end subroutine pf_broadcast
 
 end module pf_mod_parallel

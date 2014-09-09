@@ -55,12 +55,11 @@ contains
 
     pf%qtype  = SDC_GAUSS_RADAU
     pf%niters = niters
+    pf%echo_timings = .true.
 
     if (pf%nlevels > 1) then
        pf%levels(1)%nsweeps = 2
     end if
-
-!    pf%levels(:)%Finterp = .true.
 
     call pf_mpi_setup(comm, pf)
     call pf_pfasst_setup(pf, ndofs, nnodes)

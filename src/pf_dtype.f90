@@ -89,6 +89,11 @@ module pf_mod_dtype
      logical :: Pipeline_G =  .false.
      logical :: PFASST_pred = .false.
 
+     ! timing
+     logical    :: echo_timings  = .false.
+     integer(8) :: timers(100)   = 0
+     integer(8) :: runtimes(100) = 0
+
      integer     :: taui0 = -999999     ! cutoff for tau inclusion
 
      type(pf_level), pointer :: levels(:)
