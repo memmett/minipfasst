@@ -102,3 +102,36 @@ void dump_vorticity_c(char *dname, char *fname, int nx, int ny, int nz, double *
 
   fclose(fp);
 }
+
+void read_velocity_c(char *fname, int nx, int ny, int nz, double *array)
+{
+  int    i, j, k;
+  FILE*  fp;
+  char   errmsg[BUFLEN];
+
+  double *wbuf;
+
+  fp = fopen(fname, "rb");
+  if (fp == NULL) {
+    snprintf(errmsg, BUFLEN, "WARNING: Unable to open DAT file (%s)", fname);
+    perror(errmsg);
+    return;
+  }
+
+  wbuf = (double*) malloc(3*nx*ny*nz*sizeof(double));
+  if (wbuf == NULL) {
+    snprintf(errmsg, BUFLEN, "WARNING: Unable to allocate read buffer");
+    perror(errmsg);
+    return;
+  }
+
+  fread(wbuf, sizeof(double), 3*nx*ny*nz, fp);
+
+  for (i=0; i<3*nx*ny*nz; i++) {
+    array[2*i]   = wbuf[i];
+    array[2*i+1] = 0.0;
+  }
+
+  free(wbuf);
+  fclose(fp);
+}

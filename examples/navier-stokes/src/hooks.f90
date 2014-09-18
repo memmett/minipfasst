@@ -14,9 +14,14 @@ module hooks
        integer(c_int),    intent(in   ), value :: nx, ny, nz
        real(c_double),    intent(in   )        :: array(2*3*nx*ny*nz)
      end subroutine dump_velocity_c
-  end interface
 
-  interface
+     subroutine read_velocity_c(fname, nx, ny, nz, array) bind(c)
+       use iso_c_binding
+       character(c_char), intent(in   )        :: fname
+       integer(c_int),    intent(in   ), value :: nx, ny, nz
+       real(c_double),    intent(in   )        :: array(2*3*nx*ny*nz)
+     end subroutine read_velocity_c
+
      subroutine dump_vorticity_c(dname, fname, nx, ny, nz, array) bind(c)
        use iso_c_binding
        character(c_char), intent(in   )        :: dname, fname
@@ -46,6 +51,26 @@ contains
     call dump_velocity_c(trim(output) // c_null_char, trim(fname) // c_null_char, &
          lev%user%nx, lev%user%ny, lev%user%nz, qdump)
   end subroutine dump_velocity
+
+  subroutine read_velocity(fname, q, lev)
+    use feval
+    character(*),   intent(in   ) :: fname
+    real(pfdp),     intent(  out) :: q(:)
+    type(pf_level), intent(inout) :: lev
+
+    complex(pfdp), dimension(lev%user%nx,lev%user%ny,lev%user%nz) :: u, v, w
+    real(pfdp), dimension(lev%ndofs) :: qdump
+
+    call read_velocity_c(trim(fname) // c_null_char, &
+         lev%user%nx, lev%user%ny, lev%user%nz, qdump)
+
+    qdump = qdump * lev%user%scale
+    call unpack3(qdump, u, w, v)
+    call dfftw_execute_dft_(lev%user%fft, u, u)
+    call dfftw_execute_dft_(lev%user%fft, v, v)
+    call dfftw_execute_dft_(lev%user%fft, w, w)
+    call pack3(q, u, v, w)
+  end subroutine read_velocity
 
   subroutine dump_vorticity(fname, q, lev)
     use probin, only: output

@@ -71,11 +71,15 @@ contains
 
     fine => pf%levels(pf%nlevels)
     allocate(q0(fine%ndofs))
-    if (exact) then
-       call shapiro(fine%user%fft, q0, 0.d0, fine%user%nx, nu)
-       call pf_add_hook(pf, -1, PF_POST_SWEEP, echo_error_hook)
+    if (len_trim(input) /= 0) then
+       call read_velocity(input, q0, fine)
     else
-       call taylor_green(fine%user%fft, q0, 0.d0, fine%user%nx, nu)
+       if (exact) then
+          call shapiro(fine%user%fft, q0, 0.d0, fine%user%nx, nu)
+          call pf_add_hook(pf, -1, PF_POST_SWEEP, echo_error_hook)
+       else
+          call taylor_green(fine%user%fft, q0, 0.d0, fine%user%nx, nu)
+       end if
     end if
 
     call pf_add_hook(pf, -1, PF_POST_STEP, echo_enstrophy_hook)
@@ -106,10 +110,14 @@ contains
 
     allocate(q(lev%ndofs), rhs(lev%ndofs))
 
-    if (exact) then
-       call shapiro(lev%user%fft, q, 0.d0, lev%user%nx, nu)
+    if (len_trim(input) /= 0) then
+       call read_velocity(input, q, lev)
     else
-       call taylor_green(lev%user%fft, q, 0.d0, lev%user%nx, nu)
+       if (exact) then
+          call shapiro(lev%user%fft, q, 0.d0, lev%user%nx, nu)
+       else
+          call taylor_green(lev%user%fft, q, 0.d0, lev%user%nx, nu)
+       end if
     end if
 
     do n = 1, nsteps

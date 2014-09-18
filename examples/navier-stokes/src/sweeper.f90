@@ -41,7 +41,8 @@ contains
     do m = 1, lev%nnodes-1
        t = t + dtsdc(m)
        rhs = lev%Q(:,m) + S(:,m)
-       lev%user%tol = max(1.d-2**pf%iter, 1.d-8)
+       ! lev%user%tol = max(1.d-3**pf%iter, 1.d-9)
+       lev%user%tol = max(1.d-2**pf%iter, 1.d-9)
        call impl_solve(lev%Q(:,m+1), t, -dtsdc(m), rhs, lev, pf%step)
        lev%F(:,m+1,1) = -(rhs - lev%Q(:,m+1)) / dtsdc(m)
     end do

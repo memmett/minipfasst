@@ -16,22 +16,31 @@ contains
 
     integer :: un
 
-    namelist /prbin/ input, output, nu, dt, nlevs, npts, nsteps, niters, nnodes, nthreads, nskip, midpoint, exact
+    namelist /prbin/ midpoint, exact
+    namelist /prbin/ nu, dt, nsteps
+    namelist /prbin/ input, output, nskip
+    namelist /prbin/ nlevs, npts, nnodes, niters
+    namelist /prbin/ nthreads
 
     !
     ! defaults
     !
 
-    nlevs   = 2
-    nnodes  = [ 2, 3, 5 ]
-    npts    = [ 16, 32, 64 ]
-    niters  = 8
-    nsteps  = -1
-    nskip   = 1
-    nthreads = 1
+    input  = ''
+    output = ''
 
-    nu      = 7.6d-4
-    dt      = 0.0001d0
+    nlevs    = 2
+    nnodes   = [ 2, 3, 5 ]
+    npts     = [ 16, 32, 64 ]
+    niters   = 8
+    nsteps   = -1
+    nskip    = 1
+    nthreads = 1
+    nspace   = 1
+    ntime    = -1
+
+    nu       = 7.6d-4
+    dt       = 0.0001d0
 
     midpoint = .false.
     exact    = .false.
