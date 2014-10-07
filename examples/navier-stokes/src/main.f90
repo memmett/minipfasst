@@ -53,7 +53,7 @@ contains
     call pf_mpi_create(comm, MPI_COMM_WORLD)
     call pf_pfasst_create(pf, comm, nlevs)
 
-    pf%qtype  = SDC_GAUSS_RADAU
+    pf%qtype  = qtype
     pf%niters = niters
     pf%echo_timings = .true.
 
@@ -68,6 +68,7 @@ contains
     print *, 'ndofs:  ', pf%levels(:)%ndofs
     print *, 'nnodes: ', pf%levels(:)%nnodes
     print *, 'nsweeps:', pf%levels(:)%nsweeps
+    print *, 'qtype:  ', pf%qtype
 
     fine => pf%levels(pf%nlevels)
     allocate(q0(fine%ndofs))
