@@ -42,7 +42,7 @@ contains
        t = t + dtsdc(m)
        rhs = lev%Q(:,m) + S(:,m)
        ! lev%user%tol = max(1.d-3**pf%iter, 1.d-9)
-       lev%user%tol = max(1.d-2**pf%iter, 1.d-9)
+       ! lev%user%tol = max(1.d-2**pf%iter, 1.d-9)
        call impl_solve(lev%Q(:,m+1), t, -dtsdc(m), rhs, lev, pf%step)
        lev%F(:,m+1,1) = -(rhs - lev%Q(:,m+1)) / dtsdc(m)
     end do
