@@ -27,10 +27,12 @@ def stage(trial, **kwargs):
         'niters': 4,
         'dt':  0.01,
         'nnodes': 3,
+        'qtype': 1,
         'nthreads': 1,
         'nsteps': 8,
         'midpoint': 'f',
         'nlevs': 1,
+        'input': '',
 
         # pbs
         'trial': trial,
@@ -72,8 +74,30 @@ def build(clean=False):
 
 @task
 def taylor_green():
-    for p in [ 5, 10, 25, 50 ]:
-        stage('p%02dl2nx128' % p, width=p,
-              nsteps=1000, nu='0.001d0', nlevs=2, npts=[64,128], nnodes=[2,3],
-              nthreads=8, queue='regular', walltime='02:00:00')
+    # note that qtype=1028 is UNIFORM+NO_LEFT
+
+    niters = { 4: 4,
+               8: 6,
+               16: 8,
+               32: 12 }
+
+    submit = []
+    for p in [ 4, 8, 16, 32 ]:
+        trial = 'p%02dl2nx256' % p
+        stage(trial, width=p,
+              dt=0.01, nsteps=64, nu='0.001d0', nlevs=2, npts=[128, 256], nnodes=[2, 3], qtype=1028,
+              nthreads=12, queue='regular', walltime='02:00:00', niters=niters[p],
+              input=env.scratch+'initial.dat')
+        submit.append("qsub {trial}/submit.qsub".format(trial=trial))
+    with open("stage.d/submit-all.sh", 'w') as f:
+        f.write("#!/bin/sh\n")
+        f.write("\n".join(submit))
+        f.write("\n")
     rsync()
+
+@task
+def pull():
+    for p in [ 4, 8, 16, 32 ]:
+        trial = 'p%02dl2nx256' % p
+        local("scp edison:{stdout} {lstdout}".format(
+            stdout=env.scratch+trial+"/stdout", lstdout=trial + ".out"))

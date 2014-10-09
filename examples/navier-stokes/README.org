@@ -70,10 +70,61 @@ follows:
 
 * Taylor Green vortex behaviour
 
-Using the implicit-midpoint rule
+Using the implicit-midpoint (MP) rule, and running to a final time of
+10.0
 
-|    nu | npts |   dt | result               |
-|-------+------+------+----------------------|
-|  0.01 |   64 | 0.01 | all good             |
-| 0.001 |   64 | 0.01 | blows up ~ 700 steps |
-| 0.001 |  128 | 0.01 |                      |
+|    nu | npts |   dt | result             |
+|-------+------+------+--------------------|
+|  0.01 |   64 | 0.01 | all good           |
+| 0.001 |   64 | 0.01 | blew up (step 650) |
+| 0.001 |  128 | 0.01 | looks good         |
+| 0.001 |  256 | 0.01 |                    |
+
+With nu=0.001 an enstrophy of above 10 is probably bogus.
+
+Using PFASST, and running to a final time of 10.0
+
+|    nu |   dt | npts    | nnodes | nproc | niters | tol                  | result      |
+|-------+------+---------+--------+-------+--------+----------------------+-------------|
+| 0.001 | 0.01 | 64, 128 | 2, 3   |     4 |      4 | max(1.d-2**k, 1.d-9) | a bit wonky |
+|       |      |         |        |       |        |                      |             |
+
+It turns out that with a 256^3 grid, the enstrophy evolves
+significantly differently from the 128^3 case (tested using MP).
+
+Consider the following plot of enstrophies for nu=0.001
+#+begin_src sh
+python plot_enstrophy.py -o mp.pdf mp064.out mp128.out mp256.out
+#+end_src
+#+results:
+
+[[file:mp.pdf]]
+
+Running a 512^3 example doesn't seem feasible right now, unless we
+move to a distributed memory solver (MPI FFTW).  As such, I'm going to
+stick with 256^3 as the fine level and see how PFASST looks.
+
+** Numerical experiments
+
+Numerical experiments are contained in [[file:fabfile.py::taylor_green]].  To run the
+experiments:
+
+- modify source, commit, and push
+- build
+
+  #+begin_src sh
+  fab build
+  #+end_src
+
+- stage runs
+
+  #+begin_src sh
+  fab taylor_green
+  #+end_src
+
+- on edison, submit
+
+  #+begin_src sh
+  cd /global/scratch2/sd/memmett/PFASST/tg
+  qsub trial/submit.pbs
+  #+end_src
