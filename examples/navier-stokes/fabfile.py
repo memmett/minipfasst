@@ -73,31 +73,32 @@ def build(clean=False):
         run('make')
 
 @task
-def taylor_green():
+def taylor_green(trial):
     # note that qtype=1028 is UNIFORM+NO_LEFT
 
     niters = { 4: 4,
-               8: 6,
-               16: 8,
-               32: 12 }
+               8: 8,
+               16: 12 }
 
     submit = []
-    for p in [ 4, 8, 16, 32 ]:
-        trial = 'p%02dl2nx256' % p
-        stage(trial, width=p,
+    for p in [ 4, 8, 16 ]:
+        name = trial + '_p%02dl2nx256' % p
+        stage(name, width=p,
               dt=0.01, nsteps=64, nu='0.001d0', nlevs=2, npts=[128, 256], nnodes=[2, 3], qtype=1028,
               nthreads=12, queue='regular', walltime='02:00:00', niters=niters[p],
-              input=env.scratch+'initial.dat')
-        submit.append("qsub {trial}/submit.qsub".format(trial=trial))
+              input=env.scratch+'initial%s.dat' % trial)
+        submit.append("qsub {name}/submit.qsub".format(name=name))
+
     with open("stage.d/submit-all.sh", 'w') as f:
         f.write("#!/bin/sh\n")
         f.write("\n".join(submit))
         f.write("\n")
+
     rsync()
 
 @task
-def pull():
-    for p in [ 4, 8, 16, 32 ]:
-        trial = 'p%02dl2nx256' % p
+def pull(trial):
+    for p in [ 4, 8, 16 ]:
+        name = 'p%02dl2nx256' % p
         local("scp edison:{stdout} {lstdout}".format(
-            stdout=env.scratch+trial+"/stdout", lstdout=trial + ".out"))
+            stdout=env.scratch+name+"/stdout", lstdout=name + ".out"))
