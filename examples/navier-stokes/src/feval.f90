@@ -10,6 +10,167 @@ module feval
 
 contains
 
+  subroutine f1eval(y, t, lev, f)
+    real(pfdp),     intent(in   ) :: y(:), t
+    type(pf_level), intent(inout) :: lev
+    real(pfdp),     intent(  out) :: f(:)
+
+    integer :: i, j, k, nx, ny, nz
+
+    complex(pfdp), dimension(lev%user%nx,lev%user%ny,lev%user%nz) :: &
+         u, v, w, uhat, vhat, what, wk1, wk2, wk3, nluhat, nlvhat, nlwhat
+
+    complex(pfdp) :: kx(lev%user%nx), ky(lev%user%ny), kz(lev%user%nz), phat
+
+    real(pfdp) :: k2, nu, scale, diffop
+
+    ! shortcuts
+    nx = lev%user%nx; ny = lev%user%ny; nz = lev%user%nz
+    kx = lev%user%kx; ky = lev%user%ky; kz = lev%user%kz
+    nu = lev%user%nu; scale = lev%user%scale
+
+    ! unpack
+    call unpack3(y, uhat, vhat, what)
+
+    call dfftw_execute_dft_(lev%user%bft, uhat, u)
+    call dfftw_execute_dft_(lev%user%bft, vhat, v)
+    call dfftw_execute_dft_(lev%user%bft, what, w)
+
+    do k=1,nz ; do j=1,ny ; do i=1,nx
+       wk1(i,j,k) = uhat(i,j,k) * kx(i)
+       wk2(i,j,k) = uhat(i,j,k) * ky(j)
+       wk3(i,j,k) = uhat(i,j,k) * kz(k)
+    end do; end do ; end do
+    call dfftw_execute_dft_(lev%user%bft, wk1, wk1)
+    call dfftw_execute_dft_(lev%user%bft, wk2, wk2)
+    call dfftw_execute_dft_(lev%user%bft, wk3, wk3)
+    nluhat = (u * wk1 + v * wk2 + w * wk3) * scale
+    call dfftw_execute_dft_(lev%user%fft, nluhat, nluhat)
+
+    do k=1,nz ; do j=1,ny ; do i=1,nx
+       wk1(i,j,k) = vhat(i,j,k) * kx(i)
+       wk2(i,j,k) = vhat(i,j,k) * ky(j)
+       wk3(i,j,k) = vhat(i,j,k) * kz(k)
+    end do; end do ; end do
+    call dfftw_execute_dft_(lev%user%bft, wk1, wk1)
+    call dfftw_execute_dft_(lev%user%bft, wk2, wk2)
+    call dfftw_execute_dft_(lev%user%bft, wk3, wk3)
+    nlvhat = (u * wk1 + v * wk2 + w * wk3) * scale
+    call dfftw_execute_dft_(lev%user%fft, nlvhat, nlvhat)
+
+    do k=1,nz ; do j=1,ny ; do i=1,nx
+       wk1(i,j,k) = what(i,j,k) * kx(i)
+       wk2(i,j,k) = what(i,j,k) * ky(j)
+       wk3(i,j,k) = what(i,j,k) * kz(k)
+    end do; end do ; end do
+    call dfftw_execute_dft_(lev%user%bft, wk1, wk1)
+    call dfftw_execute_dft_(lev%user%bft, wk2, wk2)
+    call dfftw_execute_dft_(lev%user%bft, wk3, wk3)
+    nlwhat = (u * wk1 + v * wk2 + w * wk3) * scale
+    call dfftw_execute_dft_(lev%user%fft, nlwhat, nlwhat)
+
+    ! evaluate
+    do k=1,nz
+       do j=1,ny
+          do i=1,nx
+             k2 = realpart(kx(i)*kx(i) + ky(j)*ky(j) + kz(k)*kz(k))
+             diffop = nu * k2
+
+             ! pressure
+             phat = -( kx(i)*nluhat(i,j,k) + ky(j)*nlvhat(i,j,k) + kz(k)*nlwhat(i,j,k) ) / (k2 + 0.1d0**13)
+
+             uhat(i,j,k) = - nluhat(i,j,k) - kx(i)*phat
+             vhat(i,j,k) = - nlvhat(i,j,k) - ky(j)*phat
+             what(i,j,k) = - nlwhat(i,j,k) - kz(k)*phat
+
+          end do
+       end do
+    end do
+
+    call pack3(f, uhat, vhat, what)
+  end subroutine f1eval
+
+  subroutine f2eval(y, t, lev, f)
+    real(pfdp),     intent(in   ) :: y(:), t
+    type(pf_level), intent(inout) :: lev
+    real(pfdp),     intent(  out) :: f(:)
+
+    integer :: i, j, k, nx, ny, nz
+
+    complex(pfdp), dimension(lev%user%nx,lev%user%ny,lev%user%nz) :: &
+         uhat, vhat, what
+
+    complex(pfdp) :: kx(lev%user%nx), ky(lev%user%ny), kz(lev%user%nz)
+
+    real(pfdp) :: k2, nu, scale, diffop
+
+    ! shortcuts
+    nx = lev%user%nx; ny = lev%user%ny; nz = lev%user%nz
+    kx = lev%user%kx; ky = lev%user%ky; kz = lev%user%kz
+    nu = lev%user%nu; scale = lev%user%scale
+
+    ! unpack
+    call unpack3(y, uhat, vhat, what)
+
+    do k=1,nz
+       do j=1,ny
+          do i=1,nx
+             k2 = realpart(kx(i)*kx(i) + ky(j)*ky(j) + kz(k)*kz(k))
+             diffop = nu * k2
+
+             uhat(i,j,k) = diffop * uhat(i,j,k)
+             vhat(i,j,k) = diffop * vhat(i,j,k)
+             what(i,j,k) = diffop * what(i,j,k)
+
+          end do
+       end do
+    end do
+    call pack3(f, uhat, vhat, what)
+  end subroutine f2eval
+
+  subroutine f2comp(y, t, dt, rhs, lev, f)
+    real(pfdp),     intent(inout) :: y(:)
+    real(pfdp),     intent(in   ) :: rhs(:), t, dt
+    type(pf_level), intent(inout) :: lev
+    real(pfdp),     intent(  out) :: f(:)
+
+    integer :: i, j, k, nx, ny, nz
+
+    complex(pfdp), dimension(lev%user%nx,lev%user%ny,lev%user%nz) :: &
+         uhat, vhat, what, u0hat, v0hat, w0hat
+
+    complex(pfdp) :: kx(lev%user%nx), ky(lev%user%ny), kz(lev%user%nz), invop
+
+    real(pfdp) :: k2, nu, scale
+
+    ! shortcuts
+    nx = lev%user%nx; ny = lev%user%ny; nz = lev%user%nz
+    kx = lev%user%kx; ky = lev%user%ky; kz = lev%user%kz
+    nu = lev%user%nu; scale = lev%user%scale
+
+    ! unpack
+    call unpack3(rhs, u0hat, v0hat, w0hat)
+    call unpack3(y, uhat, vhat, what)
+
+    ! solve
+    do k=1,nz
+       do j=1,ny
+          do i=1,nx
+             k2 = realpart(kx(i)*kx(i) + ky(j)*ky(j) + kz(k)*kz(k))
+             invop = 1.d0 / (1 - dt * nu * k2 )
+
+             ! diffusion solve
+             uhat(i,j,k) = invop * u0hat(i,j,k)
+             vhat(i,j,k) = invop * v0hat(i,j,k)
+             what(i,j,k) = invop * w0hat(i,j,k)
+          end do
+       end do
+    end do
+
+    call pack3(y, uhat, vhat, what)
+    f = (y-rhs) / dt
+  end subroutine f2comp
+
   ! Evaluate F(U).
   subroutine impl_eval(y, t, lev, f)
     real(pfdp),     intent(in   ) :: y(:), t
