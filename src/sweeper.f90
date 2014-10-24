@@ -8,6 +8,7 @@
 
 module sweeper
   use pf_mod_dtype
+  use pf_mod_hooks
   use feval
   implicit none
 contains
@@ -21,6 +22,7 @@ contains
     integer     :: m, n
     real(pfdp)  :: t, dtsdc(1:lev%nnodes-1), rhs(lev%ndofs), S(lev%ndofs,lev%nnodes-1)
 
+    call call_hooks(pf, lev%level, PF_PRE_SWEEP)
 
     ! compute integrals and add fas correction
     S = 0
@@ -53,6 +55,8 @@ contains
     end do
 
     lev%qend = lev%Q(:,lev%nnodes)
+
+    call call_hooks(pf, lev%level, PF_POST_SWEEP)
   end subroutine sweep
 
   ! Evaluate function values
@@ -84,6 +88,35 @@ contains
        end do
     end do
   end subroutine integrate
+
+  ! Compute final residual
+  subroutine residual(lev, dt, resnorm)
+    type(pf_level), intent(in   ) :: lev
+    real(pfdp),     intent(in   ) :: dt
+    real(pfdp),     intent(  out) :: resnorm
+
+    real(pfdp) :: b(lev%nnodes), res(lev%ndofs)
+
+    integer :: n, m, p
+
+    b = 0
+    do n = 1, lev%nnodes-1
+       do m = 1, lev%nnodes
+          b(m) = b(m) + lev%smat(n,m)
+       end do
+    end do
+    print *, b
+
+    res = lev%q(:,1)
+    do m = 1, lev%nnodes
+       do p = 1, npieces
+          res = res + dt * b(m) * lev%F(:,m,p)
+       end do
+    end do
+    res = res - lev%q(:,lev%nnodes)
+
+    resnorm = maxval(abs(res))
+  end subroutine residual
 
   ! Initialize matrices
   subroutine sweeper_setup(lev)

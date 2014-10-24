@@ -84,6 +84,8 @@ contains
     end if
 
     call pf_add_hook(pf, -1, PF_POST_STEP, echo_enstrophy_hook)
+    call pf_add_hook(pf, -1, PF_POST_SWEEP, echo_maxvorticity_hook)
+    call pf_add_hook(pf, -1, PF_POST_SWEEP, echo_residual_hook)
     call pf_pfasst_run(pf, q0, dt, 0.0d0, nsteps_in=nsteps)
 
     call pf_pfasst_destroy(pf)
@@ -120,6 +122,8 @@ contains
           call taylor_green(lev%user%fft, q, 0.d0, lev%user%nx, nu)
        end if
     end if
+
+    call dump_velocity('initial.dat', q, lev)
 
     do n = 1, nsteps
        print *, 'step:', n

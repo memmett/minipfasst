@@ -108,4 +108,24 @@ contains
     print *, '  enstrophy', pf%step, ens
   end subroutine echo_enstrophy_hook
 
+  subroutine echo_maxvorticity_hook(pf, level)
+    use probin, only: npts, nu
+    use initial, only: maxvorticity
+    type(pf_pfasst), intent(inout) :: pf
+    type(pf_level),  intent(inout) :: level
+    real(pfdp) :: mvort
+    call maxvorticity(level%qend, level, mvort)
+    print *, '  maxvort', pf%step, pf%iter, level%level, mvort
+  end subroutine echo_maxvorticity_hook
+
+  subroutine echo_residual_hook(pf, level)
+    use probin, only: npts, nu
+    use sweeper, only: residual
+    type(pf_pfasst), intent(inout) :: pf
+    type(pf_level),  intent(inout) :: level
+    real(pfdp) :: res
+    call residual(level, pf%dt, res)
+    print *, '  residual', pf%step, pf%iter, level%level, res
+  end subroutine echo_residual_hook
+
 end module hooks

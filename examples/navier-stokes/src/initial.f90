@@ -166,4 +166,18 @@ contains
     end do; end do; end do
   end subroutine enstrophy
 
+  ! Compute max vorticity.
+  subroutine maxvorticity(y, lev, mvort)
+    real(pfdp),     intent(in   ) :: y(:)
+    type(pf_level), intent(inout) :: lev
+    real(pfdp),     intent(  out) :: mvort
+
+    integer :: i, j, k
+    real(pfdp) :: vsq(lev%user%nx,lev%user%ny,lev%user%nz)
+    real(pfdp) :: scale
+
+    call vorticity2(y, lev, vsq)
+    mvort = sqrt(maxval(vsq))
+  end subroutine maxvorticity
+
 end module initial
