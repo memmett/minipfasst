@@ -28,6 +28,11 @@ module hooks
        integer(c_int),    intent(in   ), value :: nx, ny, nz
        real(c_double),    intent(in   )        :: array(nx*ny*nz)
      end subroutine dump_vorticity_c
+
+     subroutine dump_mkdir(pathname) bind(c)
+       use iso_c_binding
+       character(kind=c_char) :: pathname(*)
+     end subroutine dump_mkdir
   end interface
 
 contains
@@ -84,6 +89,18 @@ contains
     call dump_vorticity_c(trim(output) // c_null_char, trim(fname) // c_null_char, &
          lev%user%nx, lev%user%ny, lev%user%nz, vsq)
   end subroutine dump_vorticity
+
+  subroutine dump_velocity_hook(pf, level)
+    use probin, only: npts, nu
+    use initial, only: shapiro
+    type(pf_pfasst), intent(inout) :: pf
+    type(pf_level),  intent(inout) :: level
+
+    character(len=256) :: fname
+
+    write(fname, "('s',i0.5,'i',i0.3,'l',i0.2,'.dat')") pf%step, pf%iter, level%level
+    call dump_velocity(fname, level%qend, level)
+  end subroutine dump_velocity_hook
 
   subroutine echo_error_hook(pf, level)
     use probin, only: npts, nu

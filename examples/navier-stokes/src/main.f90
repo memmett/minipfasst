@@ -86,6 +86,10 @@ contains
     call pf_add_hook(pf, -1, PF_POST_STEP, echo_enstrophy_hook)
     call pf_add_hook(pf, -1, PF_POST_SWEEP, echo_maxvorticity_hook)
     call pf_add_hook(pf, -1, PF_POST_SWEEP, echo_residual_hook)
+    if (len_trim(output) /= 0) then
+       call dump_mkdir(trim(output)//c_null_char)
+       call pf_add_hook(pf, pf%nlevels, PF_POST_SWEEP, dump_velocity_hook)
+    end if
     call pf_pfasst_run(pf, q0, dt, 0.0d0, nsteps_in=nsteps)
 
     call pf_pfasst_destroy(pf)

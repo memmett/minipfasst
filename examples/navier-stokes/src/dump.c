@@ -5,8 +5,20 @@
 #include <string.h>
 #include <sys/stat.h>
 #include <sys/types.h>
+#include <errno.h>
 
 #define BUFLEN 256
+
+void dump_mkdir(char *dname)
+{
+  if (mkdir(dname, 0755)) {
+    if (errno != EEXIST) {
+      char errmsg[BUFLEN];
+      snprintf(errmsg, BUFLEN, "WARNING: Unable to create directory: %s", dname);
+      perror(errmsg);
+    }
+  }
+}
 
 void dump_velocity_c(char *dname, char *fname, int nx, int ny, int nz, double *array)
 {
