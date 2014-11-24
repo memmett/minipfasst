@@ -98,7 +98,7 @@ contains
 
     character(len=256) :: fname
 
-    write(fname, "('s',i0.5,'i',i0.3,'l',i0.2,'.dat')") pf%step, pf%iter, level%level
+    write(fname, "('s',i0.5,'i',i0.3,'l',i0.2)") pf%step, pf%iter, level%level
     call dump_velocity(fname, level%qend, level)
   end subroutine dump_velocity_hook
 

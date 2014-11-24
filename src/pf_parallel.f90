@@ -158,10 +158,12 @@ contains
        call call_hooks(pf, -1, PF_PRE_STEP)
        do k = 1, pf%niters
           pf%iter = k
+          call call_hooks(pf, -1, PF_PRE_ITERATION)
           do l = 2, pf%nlevels
              call pf_post(pf, pf%levels(l), l*10000+pf%iter)
           end do
           call pf_v_cycle(pf, pf%nlevels)
+          call call_hooks(pf, -1, PF_POST_ITERATION)
        end do
        call call_hooks(pf, -1, PF_POST_STEP)
 
