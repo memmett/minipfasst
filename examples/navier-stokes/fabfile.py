@@ -76,18 +76,25 @@ def build(clean=False):
 def taylor_green(trial):
     # note that qtype=1028 is UNIFORM+NO_LEFT
 
-    niters = { 4: 4,
-               8: 8,
-               16: 12 }
+    niters = { 4: [4, 6],
+               8: [6, 8, 10],
+               16: [8, 12, 16, 20] }
 
     submit = []
     for p in [ 4, 8, 16 ]:
-        name = trial + '_p%02dl2nx256' % p
-        stage(name, width=p,
-              dt=0.01, nsteps=64, nu='0.001d0', nlevs=2, npts=[128, 256], nnodes=[2, 3], qtype=1028,
-              nthreads=12, queue='regular', walltime='02:00:00', niters=niters[p],
+        for k in niters[p]:
+            name = trial + '_p%02dk%02dl2nx256' % (p, k)
+            stage(name, width=p,
+                  dt=0.005, nsteps=64, nu='0.001d0', nlevs=2, npts=[128, 256], nnodes=[2, 3], qtype=1028,
+                  nthreads=12, queue='regular', walltime='02:00:00', niters=k,
+                  input=env.scratch+'initial%s.dat' % trial)
+            submit.append("qsub {name}/submit.qsub".format(name=name))
+
+    stage("reference", width=1,
+              dt=0.005, nsteps=64, nu='0.001d0', nlevs=1, npts=[256], nnodes=[5], qtype=1028,
+              nthreads=12, queue='regular', walltime='08:00:00', niters=8,
               input=env.scratch+'initial%s.dat' % trial)
-        submit.append("qsub {name}/submit.qsub".format(name=name))
+    #submit.append("qsub {name}/submit.qsub".format(name="reference"))
 
     with open("stage.d/submit-all.sh", 'w') as f:
         f.write("#!/bin/sh\n")
@@ -99,6 +106,6 @@ def taylor_green(trial):
 @task
 def pull(trial):
     for p in [ 4, 8, 16 ]:
-        name = 'p%02dl2nx256' % p
+        name = trial + '_p%02dl2nx256' % p
         local("scp edison:{stdout} {lstdout}".format(
             stdout=env.scratch+name+"/stdout", lstdout=name + ".out"))
