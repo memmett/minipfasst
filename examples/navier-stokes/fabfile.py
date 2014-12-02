@@ -13,6 +13,11 @@ from fabric.contrib.files import exists
 env.minipfasst = '~/projects/minipfasst/'
 env.scratch    = '/global/scratch2/sd/memmett/PFASST/tg/'
 
+env.nprocs = [ 4, 8, 16 ]
+env.niters = { 4: [4, 6],
+               8: [6, 8, 10],
+               16: [8, 12, 16, 20] }
+
 def stage(trial, **kwargs):
 
     puts(green("staging trial " + trial))
@@ -72,29 +77,22 @@ def build(clean=False):
             run('make clean')
         run('make')
 
+def trial_name(trial, nprocs, niters):
+    return trial + '_p%02dk%02dl2nx256' % (nprocs, niters)
+
 @task
 def taylor_green(trial):
     # note that qtype=1028 is UNIFORM+NO_LEFT
 
-    niters = { 4: [4, 6],
-               8: [6, 8, 10],
-               16: [8, 12, 16, 20] }
-
     submit = []
-    for p in [ 4, 8, 16 ]:
-        for k in niters[p]:
-            name = trial + '_p%02dk%02dl2nx256' % (p, k)
+    for p in env.nprocs:
+        for k in env.niters[p]:
+            name = trial_name(trial, p, k)
             stage(name, width=p,
-                  dt=0.005, nsteps=64, nu='0.001d0', nlevs=2, npts=[128, 256], nnodes=[2, 3], qtype=1028,
+                  dt=0.005, nsteps=64, nu='0.001d0', nlevs=2, npts=[64, 128], nnodes=[2, 3], qtype=1028,
                   nthreads=12, queue='regular', walltime='02:00:00', niters=k,
                   input=env.scratch+'initial%s.dat' % trial)
             submit.append("qsub {name}/submit.qsub".format(name=name))
-
-    stage("reference", width=1,
-              dt=0.005, nsteps=64, nu='0.001d0', nlevs=1, npts=[256], nnodes=[5], qtype=1028,
-              nthreads=12, queue='regular', walltime='08:00:00', niters=8,
-              input=env.scratch+'initial%s.dat' % trial)
-    #submit.append("qsub {name}/submit.qsub".format(name="reference"))
 
     with open("stage.d/submit-all.sh", 'w') as f:
         f.write("#!/bin/sh\n")
@@ -102,6 +100,51 @@ def taylor_green(trial):
         f.write("\n")
 
     rsync()
+
+
+@task
+def taylor_green_reference(trial):
+
+    stage("reference%s" % trial, width=1,
+          dt=0.005, nsteps=64, nu='0.001d0', nlevs=1, npts=[256], nnodes=[5], qtype=1028,
+          nthreads=12, queue='regular', walltime='08:00:00', niters=8,
+          input=env.scratch+'initial%s.dat' % trial)
+
+    rsync()
+
+@task
+def compute_errors(trial):
+
+    submit = """\
+#!/bin/sh
+#PBS -N comperrs
+#PBS -q regular
+#PBS -l mppwidth={width}
+#PBS -l walltime={walltime}
+#PBS -o /global/scratch2/sd/memmett/PFASST/tg/{trial}/errors
+#PBS -e /global/scratch2/sd/memmett/PFASST/tg/{trial}/errors.stderr
+#PBS -V
+
+module load python
+cd /global/scratch2/sd/memmett/PFASST/tg
+aprun -n {width} python {minipfasst}/examples/navier-stokes/compute_errors.py -n {width} {reference} {trial}
+"""
+
+    with open('stage.d/submit-errors.sh', 'w') as all:
+        all.write("#!/bin/sh\n")
+        for p in env.nprocs:
+            for k in env.niters[p]:
+                name = trial_name(trial, p, k)
+                sname = '{trial}/submit-errors.qsub'.format(trial=name)
+
+                with open('stage.d/' + sname, 'w') as qsub:
+                    qsub.write(submit.format(
+                        trial=name, width=6, walltime="01:00:00",
+                        minipfasst=env.minipfasst, reference="reference"))
+
+                all.write("qsub {submit}\n".format(submit=sname))
+    rsync()
+
 
 @task
 def pull(trial):
