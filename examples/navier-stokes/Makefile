@@ -26,6 +26,9 @@ include $(MINIPFASST)/Makefile.rules
 chop: chop.f90
 	$(FC) $(FFLAGS) -o chop chop.f90 $(filter-out build/main.o,$(OBJ)) $(LDFLAGS)
 
+restrict: restrict.f90
+	$(FC) $(FFLAGS) -o restrict restrict.f90 $(filter-out build/main.o,$(OBJ)) $(LDFLAGS)
+
 #
 # dependencies
 #
