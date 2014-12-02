@@ -48,6 +48,7 @@ build/pf_dtype.o:       build/user_dtype.o build/sweeper_dtype.o
 build/pf_utils.o:       build/pf_dtype.o build/sweeper.o
 build/pf_hooks.o:       build/pf_dtype.o
 build/pf_mpi.o:         build/pf_dtype.o
+build/sweeper.o:        build/pf_hooks.o
 build/pf_restrict.o:    build/pf_utils.o build/pf_hooks.o build/transfer.o
 build/pf_interpolate.o: build/pf_restrict.o build/pf_hooks.o build/sweeper.o
 build/pf_parallel.o:    build/pf_interpolate.o build/pf_hooks.o build/pf_mpi.o build/pf_timer.o
