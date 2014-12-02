@@ -30,7 +30,7 @@ def read(dname):
 
 
 def load(fname):
-    return np.fromfile(fname + '.dat.dat', dtype=np.float64)
+    return np.fromfile(fname + '.dat', dtype=np.float64)
 
 
 def compute_error(t):
@@ -43,7 +43,7 @@ def compute_error(t):
 @click.command()
 @click.argument('reference', type=click.Path(exists=True))
 @click.argument('approximate', type=click.Path(exists=True))
-@click.option('-n', default=1)
+@click.option('--nprocs', '-n', default=1)
 def compute_errors(reference, approximate, nprocs):
 
     ref = read(reference + '/out.d')
@@ -65,7 +65,6 @@ def compute_errors(reference, approximate, nprocs):
                 t.append((s, i, refmap[s], appmap[s,i]))
             except:
                 print 'WARNING: something funny with', s, i
-                pass
 
     pool = multiprocessing.Pool(processes=nprocs)
     errors = pool.map(compute_error, t)
