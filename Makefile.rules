@@ -44,6 +44,7 @@ clean:
 
 build/sweeper_dtype.o:  build/pf_config.o
 build/user_dtype.o:     build/pf_config.o
+build/sweeper.o:        build/pf_hooks.o
 build/pf_dtype.o:       build/user_dtype.o build/sweeper_dtype.o
 build/pf_utils.o:       build/pf_dtype.o build/sweeper.o
 build/pf_hooks.o:       build/pf_dtype.o

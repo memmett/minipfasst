@@ -127,7 +127,7 @@ def compute_errors(trial):
 
 module load python
 cd /global/scratch2/sd/memmett/PFASST/tg
-aprun -n {width} python {minipfasst}/examples/navier-stokes/compute_errors.py -n {width} {reference} {trial}
+python {minipfasst}/examples/navier-stokes/compute_errors.py -n {width} {reference} {trial}
 """
 
     with open('stage.d/submit-errors.sh', 'w') as all:
