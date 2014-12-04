@@ -1,12 +1,13 @@
 """Parse output (from stdout) of NS runs and plot enstrophy."""
 
 import click
-import numpy as np
 import re
 import os
 import multiprocessing
+import subprocess
 
 from collections import namedtuple
+
 
 pftuple = namedtuple('pftuple', ['step', 'iteration', 'level', 'data'])
 
@@ -16,28 +17,35 @@ def read(dname):
   solutions.
   """
 
-  prog = re.compile('(s(\d+)i(\d+)l(\d+)).dat')
+  prog = re.compile('s(\d+)i(\d+)l(\d+).dat')
 
   solutions = []
   for fname in os.listdir(dname):
     m = prog.search(fname)
     if m:
-      step, iteration, level = map(int, m.groups()[1:])
+      step, iteration, level = map(int, m.groups())
       solutions.append(pftuple(step, iteration, level,
-                               os.path.join(dname, m.group(1))))
+                               os.path.join(dname, m.group(0))))
 
   return solutions
 
 
-def load(fname):
-    return np.fromfile(fname + '.dat', dtype=np.float64)
+def compute_error(work):
+  """Compute error"""
+  ref, sols = work
+  dname = os.path.dirname(os.path.abspath(__file__))
+  out   = subprocess.check_output([os.path.join(dname, 'errors'), ref] + sols)
 
+  errs = []
+  prog = re.compile('s(\d+)i(\d+)l(\d+).dat\s*(\S+)')
+  for l in out.split('\n'):
+    m = prog.search(l)
+    if m:
+      step, iteration, level = map(int, m.groups()[0:3])
+      error = float(m.group(4))
+      errs.append((step, iteration, error))
 
-def compute_error(t):
-    s, i, ref, app = t
-    xref = load(ref)
-    xapp = load(app)
-    return s, i, max(abs(xref-xapp))
+  return errs
 
 
 @click.command()
@@ -45,35 +53,33 @@ def compute_error(t):
 @click.argument('approximate', type=click.Path(exists=True))
 @click.option('--nprocs', '-n', default=1)
 def compute_errors(reference, approximate, nprocs):
+  """Compute errors for each step and iteration."""
 
-    ref = read(reference + '/out.d')
-    app = read(approximate + '/out.d')
+  ref = read(reference + '/out.d')
+  app = read(approximate + '/out.d')
 
-    maxiter = max([ x.iteration for x in ref ])
-    refmap = { x.step: x.data for x in ref if x.iteration == maxiter }
+  maxiter = max([ x.iteration for x in ref ])
+  refmap = { x.step: x.data for x in ref if x.iteration == maxiter }
 
-    maxlev = max([ x.level for x in app ])
-    appmap = { (x.step, x.iteration): x.data for x in app if x.level == maxlev }
+  maxlev = max([ x.level for x in app ])
+  appmap = { (x.step, x.iteration): x.data for x in app if x.level == maxlev }
 
-    steps = set([ x.step for x in app ])
-    iters = set([ x.iteration for x in app ])
+  steps = sorted(refmap.keys())
+  iters = sorted(set([ x.iteration for x in app ]))
 
-    t = []
-    for s in sorted(steps):
-        for i in sorted(iters):
-            try:
-                t.append((s, i, refmap[s], appmap[s,i]))
-            except:
-                print 'WARNING: something funny with', s, i
+  # build list of tuples: (step s ref. sol., [ step s sols. ])
+  work = [ (refmap[s],
+            [ appmap[s,i] for i in iters if (s,i) in appmap ]) for s in steps ]
 
-    pool = multiprocessing.Pool(processes=nprocs)
-    errors = pool.map(compute_error, t)
-    pool.close()
-    pool.join()
+  pool = multiprocessing.Pool(processes=nprocs)
+  errors = pool.map(compute_error, work)
+  pool.close()
+  pool.join()
 
-    for s, i, err in errors:
-        print s, i, err
+  for t in errors:
+    for s, i, err in t:
+      print s, i, err
 
 
 if __name__ == '__main__':
-    compute_errors()
+  compute_errors()

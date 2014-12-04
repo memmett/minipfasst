@@ -29,6 +29,9 @@ chop: chop.f90
 restrict: restrict.f90
 	$(FC) $(FFLAGS) -o restrict restrict.f90 $(filter-out build/main.o,$(OBJ)) $(LDFLAGS)
 
+errors: errors.f90
+	$(FC) $(FFLAGS) -o errors errors.f90 $(filter-out build/main.o,$(OBJ)) $(LDFLAGS)
+
 #
 # dependencies
 #
