@@ -32,6 +32,9 @@ restrict: restrict.f90
 errors: errors.f90
 	$(FC) $(FFLAGS) -o errors errors.f90 $(filter-out build/main.o,$(OBJ)) $(LDFLAGS)
 
+diff: diff.f90
+	$(FC) $(FFLAGS) -o diff diff.f90 $(filter-out build/main.o,$(OBJ)) $(LDFLAGS)
+
 #
 # dependencies
 #
