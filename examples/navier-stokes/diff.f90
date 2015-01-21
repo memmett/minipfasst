@@ -39,8 +39,6 @@ program main
   q_fine = q_fine - q_intrp
 
   call get_command_argument(3, fname)
-  ! call dump_velocity(trim(fname), q_fine, fine)
-  call dump_velocity_c('.' // c_null_char, trim(fname) // c_null_char, &
-       fine%user%nx, fine%user%ny, fine%user%nz, q_fine)
+  call dump_magvelocity_components(trim(fname), q_fine, fine)
 
 end program main

@@ -74,6 +74,49 @@ void dump_velocity_c(char *dname, char *fname, int nx, int ny, int nz, double *a
   fclose(fp);
 }
 
+void dump_velocity_component_c(char *fname, char *comp, int nx, int ny, int nz, double *u)
+{
+  int    i, j, k;
+  FILE*  fp;
+  char   errmsg[BUFLEN];
+  char   buf[BUFLEN];
+
+  double *wbuf;
+
+  /* bov file */
+  snprintf(buf, BUFLEN, "%s_%s.bov", fname, comp);
+  fp = fopen(buf, "wb");
+  if (fp == NULL) {
+    snprintf(errmsg, BUFLEN, "WARNING: Unable to create BOV file (%s)", buf);
+    perror(errmsg);
+    return;
+  }
+
+  /* dat file name */
+  snprintf(buf, BUFLEN, "%s_%s.dat", fname, comp);
+
+  fprintf(fp, "VARIABLE: %s\n", comp);
+  fprintf(fp, "DATA_FILE: %s\n", buf);
+  fprintf(fp, "DATA_SIZE: %d\n", nx);
+  fprintf(fp, "DATA_COMPONENTS: 1\n");
+  fprintf(fp, "DATA_FORMAT: DOUBLE\n");
+  fprintf(fp, "DATA_ENDIAN: LITTLE\n");
+  fclose(fp);
+
+  /* dat file */
+  snprintf(buf, BUFLEN, "%s.dat", fname);
+  fp = fopen(buf, "wb");
+  if (fp == NULL) {
+    snprintf(errmsg, BUFLEN, "WARNING: Unable to create DAT file (%s)", buf);
+    perror(errmsg);
+    return;
+  }
+
+  fwrite(u, sizeof(double), nx*ny*nz, fp);
+
+  fclose(fp);
+}
+
 void dump_vorticity_c(char *dname, char *fname, int nx, int ny, int nz, double *array)
 {
   int    i, j, k;
