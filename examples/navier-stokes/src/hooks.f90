@@ -15,6 +15,13 @@ module hooks
        real(c_double),    intent(in   )        :: array(2*3*nx*ny*nz)
      end subroutine dump_velocity_c
 
+     subroutine dump_velocity_component_c(fname, comp, nx, ny, nz, u) bind(c)
+       use iso_c_binding
+       character(c_char), intent(in   )        :: fname, comp
+       integer(c_int),    intent(in   ), value :: nx, ny, nz
+       real(c_double),    intent(in   )        :: u(2*nx*ny*nz)
+     end subroutine dump_velocity_component_c
+
      subroutine read_velocity_c(fname, nx, ny, nz, array) bind(c)
        use iso_c_binding
        character(c_char), intent(in   )        :: fname
@@ -47,7 +54,7 @@ contains
     complex(pfdp), dimension(lev%user%nx,lev%user%ny,lev%user%nz) :: u, v, w
     real(pfdp), dimension(lev%ndofs) :: qdump
 
-    call unpack3(q, u, w, v)
+    call unpack3(q, u, v, w)
     call dfftw_execute_dft_(lev%user%bft, u, u)
     call dfftw_execute_dft_(lev%user%bft, v, v)
     call dfftw_execute_dft_(lev%user%bft, w, w)
@@ -56,6 +63,24 @@ contains
     call dump_velocity_c(trim(output) // c_null_char, trim(fname) // c_null_char, &
          lev%user%nx, lev%user%ny, lev%user%nz, qdump)
   end subroutine dump_velocity
+
+  subroutine dump_magvelocity_components(fname, q, lev)
+    use probin, only: output
+    use feval
+    character(*),   intent(in   ) :: fname
+    real(pfdp),     intent(in   ) :: q(:)
+    type(pf_level), intent(inout) :: lev
+
+    complex(pfdp), dimension(lev%user%nx,lev%user%ny,lev%user%nz) :: u, v, w
+
+    call unpack3(q, u, v, w)
+    call dump_velocity_component_c(trim(fname) // c_null_char, 'u' // c_null_char, &
+         lev%user%nx, lev%user%ny, lev%user%nz, abs(u))
+    call dump_velocity_component_c(trim(fname) // c_null_char, 'v' // c_null_char, &
+         lev%user%nx, lev%user%ny, lev%user%nz, abs(v))
+    call dump_velocity_component_c(trim(fname) // c_null_char, 'w' // c_null_char, &
+         lev%user%nx, lev%user%ny, lev%user%nz, abs(w))
+  end subroutine dump_magvelocity_components
 
   subroutine read_velocity(fname, q, lev)
     use feval
@@ -70,7 +95,7 @@ contains
          lev%user%nx, lev%user%ny, lev%user%nz, qdump)
 
     qdump = qdump * lev%user%scale
-    call unpack3(qdump, u, w, v)
+    call unpack3(qdump, u, v, w)
     call dfftw_execute_dft_(lev%user%fft, u, u)
     call dfftw_execute_dft_(lev%user%fft, v, v)
     call dfftw_execute_dft_(lev%user%fft, w, w)

@@ -1,22 +1,28 @@
 """Fabric (fabfile.org) tasks for PFASST paper."""
 
 import glob
-import os.path
+import io
+import os
+import subprocess
 
 import numpy as np
+import pandas
 
 from fabric.api import *
 from fabric.colors import *
 from fabric.utils import *
 from fabric.contrib.files import exists
+from fabric.operations import get
+
+from ggplot import *
 
 env.minipfasst = '~/projects/minipfasst/'
 env.scratch    = '/global/scratch2/sd/memmett/PFASST/tg/'
 
 env.nprocs = [ 4, 8, 16 ]
 env.niters = { 4: [4, 6],
-               8: [6, 8, 10],
-               16: [8, 12, 16, 20] }
+               8: [4, 6, 8, 10],
+               16: [4, 8, 12, 16, 20] }
 
 def stage(trial, **kwargs):
 
@@ -77,11 +83,11 @@ def build(clean=False):
             run('make clean')
         run('make')
 
-def trial_name(trial, nprocs=None, niters=None, nx=None, nlevs=2, reference=False):
+def trial_name(trial, nprocs=None, niters=None, nx=None, nlevs=2, reference=False, qtype='u', nnodes=3):
     if reference:
-        tmpl = 's{trial:02d}_ref_nx{nx:03d}'
+        tmpl = 's{trial}_ref_nx{nx:03d}'
     else:
-        tmpl = 's{trial:02d}_p{nprocs:02d}_k{niters:02d}_l{nlevs}_nx{nx:03d}'
+        tmpl = 's{trial}_p{nprocs:02d}_k{niters:02d}_l{nlevs}_nx{nx:03d}_{qtype}{nnodes:d}'
     return tmpl.format(**locals())
 
 
@@ -92,10 +98,11 @@ def taylor_green(trial, nx=128):
     submit = []
     for p in env.nprocs:
         for k in env.niters[p]:
-            name = trial_name(trial, nprocs=p, niters=k, nx=nx)
+            name = trial_name(trial, nprocs=p, niters=k, nx=nx, qtype='gl', nnodes=5)
             stage(name, width=p,
-                  dt=0.005, nsteps=64, nu='0.001d0', nlevs=2, npts=[64, 128], nnodes=[2, 3], qtype=1028,
-                  nthreads=12, queue='regular', walltime='02:00:00', niters=k,
+                  dt=0.005, nsteps=64, nu='0.001d0', nlevs=2, npts=[64, 128], nnodes=[3, 5], qtype=1,
+#                  nthreads=12, queue='regular', walltime='02:00:00', niters=k,
+                  nthreads=12, queue='debug', walltime='00:30:00', niters=k,
                   input=env.scratch+'initial%snx%d.dat' % (trial, nx))
             submit.append("qsub {name}/submit.qsub".format(name=name))
 
@@ -112,11 +119,12 @@ def taylor_green_reference(trial, nx=256):
 
     name = trial_name(trial, nx=nx, reference=True)
     stage(name, width=1,
-          dt=0.005, nsteps=64, nu='0.001d0', nlevs=1, npts=[nx], nnodes=[5], qtype=1028,
-          nthreads=12, queue='regular', walltime='08:00:00', niters=8,
+          dt=0.005, nsteps=64, nu='0.001d0', nlevs=1, npts=[nx], nnodes=[5], qtype=1,
+          nthreads=12, queue='regular', walltime='16:00:00', niters=8,
           input=env.scratch+'initial%snx%d.dat' % (trial, nx))
 
     rsync()
+
 
 @task
 def compute_errors(trial):
@@ -140,14 +148,38 @@ python {minipfasst}/examples/navier-stokes/compute_errors.py -n {width} {referen
         all.write("#!/bin/sh\n")
         for p in env.nprocs:
             for k in env.niters[p]:
-                tname = trial_name(trial, nprocs=p, niters=k, nx=128)
+                tname = trial_name(trial, nprocs=p, niters=k, nx=128, qtype='gl', nnodes=5)
                 rname = trial_name(trial, nx=256, reference=True)
                 sname = '{trial}/submit-errors.qsub'.format(trial=tname)
 
+                local('mkdir -p stage.d/' + tname)
+
                 with open('stage.d/' + sname, 'w') as qsub:
                     qsub.write(submit.format(
-                        trial=tname, width=6, walltime="01:00:00",
+                        trial=tname, width=6, walltime="00:20:00",
                         minipfasst=env.minipfasst, reference=rname))
 
                 all.write("qsub {submit}\n".format(submit=sname))
     rsync()
+
+@task
+@hosts('edison.nersc.gov')
+def plot_errors(trial, tname=None):
+
+  if tname is None:
+    puts(red("No trial name specified, please choose from one of:"))
+    run("ls -d {scratch}/s{trial}*".format(scratch=env.scratch, trial=trial))
+    return
+
+  puts(yellow('generating error plot for: {trial}'.format(trial=tname)))
+
+  get(remote_path='{scratch}/{trial}/errors'.format(scratch=env.scratch, trial=tname),
+      local_path='{trial}.errors'.format(trial=tname))
+
+  errors = subprocess.check_output("grep -r '^[0-9]' {trial}.errors".format(trial=tname), shell=True)
+  df = pandas.read_table(io.BytesIO(errors), names=['step', 'iteration', 'error'], sep=' ')
+
+  p = ggplot(df, aes(x='step', y='error', group='iteration', colour='factor(iteration)')) \
+      + scale_y_log10() + geom_line()
+  ggsave('{trial}.pdf'.format(trial=tname), p)
+  puts(green('error plot saved in: {trial}.pdf'.format(trial=tname)))
