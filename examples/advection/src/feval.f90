@@ -6,13 +6,13 @@
 
 module feval
   use pf_mod_dtype
-  use multigrid
+  use multigrid, only: lx, spatial_order, fill_bc, multigrid_v_cycle
   implicit none
 
   real(pfdp), parameter :: &
        v      = 1.0_pfdp, &        ! velocity
        nu     = 0.02_pfdp, &       ! viscosity
-       t00    = 0.15_pfdp           ! initial time for exact solution
+       t00    = 0.15_pfdp          ! initial time for exact solution
 
   real(pfdp), parameter :: two_pi = 6.2831853071795862_pfdp
   real(pfdp), parameter :: pi = 3.141592653589793_pfdp
